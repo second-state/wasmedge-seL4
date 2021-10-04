@@ -29,7 +29,7 @@ cd sel4_wasmedge
 
 # Setup project files
 git clone https://gerrit.googlesource.com/git-repo .repo/repo
-.repo/repo/repo init -u https://github.com/seL4/camkes-vm-examples-manifest.git
+.repo/repo/repo init -u https://github.com/second-state/wasmedge-seL4.git
 
 # Update and checkout files
 .repo/repo/repo sync
