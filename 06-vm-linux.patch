@@ -1,0 +1,181 @@
+diff --git a/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/CMakeLists.txt b/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/CMakeLists.txt
+new file mode 100644
+index 0000000..40d79c9
+--- /dev/null
++++ b/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/CMakeLists.txt
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: Apache-2.0
++
++cmake_minimum_required(VERSION 3.8.2)
++
++project(wasmedge_emit C)
++
++add_executable(wasmedge_emit wasmedge_emit.c)
++target_link_libraries(wasmedge_emit -static-libgcc -static)
+diff --git a/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/wasmedge_emit.c b/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/wasmedge_emit.c
+new file mode 100644
+index 0000000..53ef373
+--- /dev/null
++++ b/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit/wasmedge_emit.c
+@@ -0,0 +1,161 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#include <errno.h>
++#include <inttypes.h>
++#include <stdatomic.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include <fcntl.h>
++#include <sys/mman.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#define BUS "/dev/uio0"
++
++#define BUFSIZE 4096
++typedef struct input_s {
++  uint16_t command;
++  uint16_t size;
++  char data[BUFSIZE - sizeof(uint16_t) - sizeof(uint16_t)];
++} input_t;
++typedef union shm_u {
++  input_t input;
++  uint32_t output;
++} shm_t;
++enum {
++  RESET_BUFFER = 1,
++  SEND_PART = 2,
++  SEND_DONE = 3,
++  SET_ARG = 4,
++  RUN = 5,
++};
++
++static uint_least32_t send_file(input_t *const shm,
++                                atomic_uint_least32_t *const event,
++                                const int fd) {
++  {
++    const uint64_t filesize = lseek(fd, 0, SEEK_END);
++    if (filesize == (uint64_t)-1) {
++      return errno;
++    }
++    lseek(fd, 0, SEEK_SET);
++    shm->command = RESET_BUFFER;
++    memcpy(shm->data, &filesize, sizeof(filesize));
++    shm->size = sizeof(filesize);
++    atomic_store(event, 1);
++    const uint_least32_t error_code = atomic_load(event);
++    if (error_code != 0) {
++      return error_code;
++    }
++  }
++
++  while (shm->command = SEND_PART,
++         shm->size = read(fd, shm->data, sizeof(shm->data)), shm->size > 0) {
++    atomic_store(event, 1);
++    const uint_least32_t error_code = atomic_load(event);
++    if (error_code != 0) {
++      return error_code;
++    }
++  }
++
++  shm->command = SEND_DONE;
++  atomic_store(event, 1);
++  return atomic_load(event);
++}
++
++static uint_least32_t set_arg(input_t *const shm,
++                              atomic_uint_least32_t *const event,
++                              const char *arg) {
++  const size_t max_len = sizeof(shm->data) - 1;
++  size_t len = strlen(arg);
++  if (len > max_len) {
++    len = max_len;
++  }
++  shm->command = SET_ARG;
++  memcpy(shm->data, arg, len);
++  shm->size = len;
++  atomic_store(event, 1);
++  return atomic_load(event);
++}
++
++static uint_least32_t run(input_t *const shm,
++                          atomic_uint_least32_t *const event) {
++  shm->command = RUN;
++  atomic_store(event, 1);
++  return atomic_load(event);
++}
++
++int main(int argc, char *argv[]) {
++  if (argc < 2) {
++    printf("Usage: %s aot-wasm-file [args...]\n\n"
++           "emit wasm file to the runner\n",
++           argv[0]);
++    return 1;
++  }
++
++  const char *wasm_filename = argv[1];
++  int wasm_fd = open(wasm_filename, O_RDONLY);
++  if (wasm_fd < 0) {
++    perror("open wasm file failed\n");
++    return -1;
++  }
++
++  int bus = open(BUS, O_RDWR);
++  if (bus < 0) {
++    perror("open bus device failed\n");
++    return -1;
++  }
++
++  input_t *shm;
++  if ((shm = mmap(NULL, sizeof(*shm), PROT_READ | PROT_WRITE, MAP_SHARED, bus,
++                  1 * getpagesize())) == (void *)-1) {
++    printf("mmap shm failed\n");
++    close(bus);
++    return -1;
++  }
++
++  atomic_uint_least32_t *event;
++  if ((event = mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, bus,
++                    0 * getpagesize())) == (void *)-1) {
++    printf("mmap event failed\n");
++    munmap(shm, sizeof(*shm));
++    close(bus);
++    return -1;
++  }
++
++  uint_least32_t error_code = 0;
++
++  if (error_code = send_file(shm, event, wasm_fd), error_code != 0) {
++    printf("Got error code %" PRIu32 " on send_file.\n", error_code);
++    munmap(event, 0x1000);
++    munmap(shm, sizeof(*shm));
++    close(bus);
++    return -1;
++  }
++
++  for (int i = 2; i < argc; ++i) {
++    if (error_code = set_arg(shm, event, argv[i]), error_code != 0) {
++      printf("Got error code %" PRIu32 " on set_arg.\n", error_code);
++      munmap(event, 0x1000);
++      munmap(shm, sizeof(*shm));
++      close(bus);
++      return -1;
++    }
++  }
++
++  if (error_code = run(shm, event), error_code != 0) {
++    printf("Got error code %" PRIu32 " on run.\n", error_code);
++    munmap(event, 0x1000);
++    munmap(shm, sizeof(*shm));
++    close(bus);
++    return -1;
++  }
++
++  munmap(event, 0x1000);
++  munmap(shm, sizeof(*shm));
++  close(wasm_fd);
++
++  return 0;
++}

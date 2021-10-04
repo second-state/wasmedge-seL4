@@ -1,0 +1,606 @@
+diff --git a/apps/Arm/wasmedge/CMakeLists.txt b/apps/Arm/wasmedge/CMakeLists.txt
+new file mode 100644
+index 0000000..4fe1e97
+--- /dev/null
++++ b/apps/Arm/wasmedge/CMakeLists.txt
+@@ -0,0 +1,197 @@
++# SPDX-License-Identifier: Apache-2.0
++
++cmake_minimum_required(VERSION 3.9.4)
++
++project(camkes-ssvm C CXX)
++
++include(${CAMKES_ARM_VM_HELPERS_PATH})
++find_package(camkes-vm-linux REQUIRED)
++
++find_package(libcxx REQUIRED)
++add_library(std::filesystem ALIAS cxx_static)
++set(BUILD_AOT_RUNTIME OFF CACHE BOOL "Enable WasmEdge LLVM-based ahead of time compilation runtime.")
++set(BUILD_SHARED_LIB OFF CACHE BOOL "Generate the WasmEdge shared library.")
++set(BUILD_TOOLS OFF CACHE BOOL "Generate wasmedge and wasmedgec tools.")
++set(SPDLOG_NO_ATOMIC_LEVELS ON)
++set(SPDLOG_NO_EXCEPTIONS ON)
++set(SPDLOG_NO_THREAD_ID ON)
++set(SPDLOG_NO_TLS ON)
++find_package(WasmEdge REQUIRED)
++cmake_policy(SET CMP0079 NEW)
++target_link_libraries(wasmedgeCommon PUBLIC cxx-headers cxx_static cxxabi_static)
++target_link_libraries(spdlog PUBLIC cxx-headers cxx_static cxxabi_static)
++
++include(${CAMKES_VM_LINUX_HELPERS_PATH})
++include(${CAMKES_VM_LINUX_MODULE_HELPERS_PATH})
++include(${CAMKES_VM_LINUX_SOURCE_HELPERS_PATH})
++include(${CAMKES_VM_LINUX_MODULE_HELPERS_PATH})
++include(ExternalProject)
++include(external-project-helpers)
++
++# Create our CPP Flags based on ARM VM config variables
++if("${KernelARMPlatform}" STREQUAL "qemu-arm-virt")
++    set(cpp_flags "-DKERNELARMPLATFORM_QEMU-ARM-VIRT")
++    set(linux_repo "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git")
++    set(linux_tag "v4.9.189")
++    set(linux_arch "arm64")
++    set(linux_cross_compile "aarch64-linux-gnu-")
++    include(simulation)
++    set(SIMULATION ON CACHE BOOL "Generate simulation script to run qemu with the proper arguments")
++    if(SIMULATION)
++        GenerateSimulateScript()
++    endif()
++endif()
++
++AddToFileServer("linux" "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/linux")
++
++set(rootfs_file "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/rootfs.cpio.gz")
++# Checkout and configure linux to build crossvm module
++ExternalProject_Add(
++    checkout_linux
++    GIT_REPOSITORY
++    ${linux_repo}
++    GIT_TAG
++    ${linux_tag}
++    GIT_SHALLOW
++    1
++    GIT_PROGRESS
++    1
++    BUILD_COMMAND
++    ""
++    INSTALL_COMMAND
++    ""
++    CONFIGURE_COMMAND
++    ""
++    SOURCE_DIR
++    ${CMAKE_CURRENT_BINARY_DIR}/linux_out
++)
++# Linux config and symvers are to be copied to unpacked archive
++set(linux_config "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/linux_configs/config")
++set(linux_symvers "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/linux_configs/Module.symvers")
++# Configure unpacked archive with config and symvers
++ConfigureLinux(
++    ${CMAKE_CURRENT_BINARY_DIR}/linux_out
++    ${linux_config}
++    ${linux_symvers}
++    configure_vm_linux
++    ARCH
++    ${linux_arch}
++    CROSS_COMPILE
++    ${linux_cross_compile}
++    DEPENDS
++    checkout_linux
++)
++
++# Compile CrossVM Dataport Module
++DefineLinuxModule(
++    ${CAMKES_VM_LINUX_DIR}/camkes-linux-artifacts/camkes-linux-modules/camkes-connector-modules/connection
++    output_module
++    output_module_target
++    KERNEL_DIR
++    ${CMAKE_CURRENT_BINARY_DIR}/linux_out
++    ARCH
++    ${linux_arch}
++    CROSS_COMPILE
++    ${linux_cross_compile}
++    DEPENDS
++    checkout_linux
++    configure_vm_linux
++)
++AddFileToOverlayDir(
++    "connection.ko"
++    ${output_module}
++    "lib/modules/4.14.87/kernel/drivers/vmm"
++    overlay
++    DEPENDS
++    output_module_target
++)
++
++# Complile Wasmedge Emitter
++ExternalProject_Add(
++    wasmedge-emit
++    URL
++    file:///${CAMKES_VM_LINUX_DIR}/camkes-linux-artifacts/camkes-linux-apps/wasmedge-emit
++    BINARY_DIR
++    ${CMAKE_CURRENT_BINARY_DIR}/wasmedge_emit
++    INSTALL_COMMAND
++    ""
++    BUILD_ALWAYS
++    ON
++    EXCLUDE_FROM_ALL
++    CMAKE_ARGS
++    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
++)
++AddExternalProjFilesToOverlay(
++    wasmedge-emit
++    ${CMAKE_CURRENT_BINARY_DIR}/wasmedge_emit
++    overlay
++    "usr/bin"
++    FILES
++    wasmedge_emit
++)
++
++# Add script to initialise dataport module
++AddFileToOverlayDir(
++    "S90crossvm_module_init"
++    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/init_scripts/cross_vm_module_init
++    "etc/init.d"
++    overlay
++)
++
++# Add nbody-c wasm file to test wasmedge
++AddFileToOverlayDir(
++    "nbody-c.wasm"
++    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/nbody-c.wasm
++    "usr/bin"
++    overlay
++)
++
++# Add hello wasm file to test wasmedge
++AddFileToOverlayDir(
++    "hello.wasm"
++    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/hello.wasm
++    "usr/bin"
++    overlay
++)
++
++# Construct new rootfs
++AddOverlayDirToRootfs(
++    overlay
++    ${rootfs_file}
++    "buildroot"
++    "rootfs_install"
++    output_overlayed_rootfs_location
++    rootfs_target
++    GZIP
++)
++AddToFileServer("linux-initrd" ${output_overlayed_rootfs_location} DEPENDS rootfs_target)
++
++AddCamkesCPPFlag(
++    cpp_flags
++    CONFIG_VARS
++    VmEmmc2NoDMA
++    VmVUSB
++    VmVchan
++    Tk1DeviceFwd
++    Tk1Insecure
++    VmVirtioNetVirtqueue
++)
++
++DefineCAmkESVMFileServer()
++
++CAmkESAddImportPath(${KernelARMPlatform})
++
++# Define our VM Component with out cross vm dataports glue code
++DeclareCAmkESComponent(VM SOURCES src/cross_vm_connections.c)
++
++# Define our WasmEdge Component
++DeclareCAmkESComponent(WasmEdge SOURCES src/wasmedge.cpp INCLUDES ${CMAKE_BINARY_DIR}/include/c++/v1 LIBS wasmedgeVM C_FLAGS -O3 -g -std=gnu++17)
++
++# Declare root server
++DeclareCAmkESRootserver(
++    wasmedge.camkes
++    CPP_FLAGS
++    ${cpp_flags}
++    CPP_INCLUDES
++    ${CAMKES_VM_DIR}/components/VM_Arm
++)
+diff --git a/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_module_init b/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_module_init
+new file mode 100755
+index 0000000..2d9df04
+--- /dev/null
++++ b/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_module_init
+@@ -0,0 +1,14 @@
++#!/bin/sh
++#
++# Copyright 2019, Data61
++# Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++# ABN 41 687 119 230.
++#
++# This software may be distributed and modified according to the terms of
++# the BSD 2-Clause license. Note that NO WARRANTY is provided.
++# See "LICENSE_BSD2.txt" for details.
++#
++# @TAG(DATA61_BSD)
++#
++
++insmod /lib/modules/4.14.87/kernel/drivers/vmm/connection.ko
+diff --git a/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_test b/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_test
+new file mode 100755
+index 0000000..a493410
+--- /dev/null
++++ b/apps/Arm/wasmedge/overlay_files/init_scripts/cross_vm_test
+@@ -0,0 +1,23 @@
++#!/bin/sh
++#
++# Copyright 2019, Data61
++# Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++# ABN 41 687 119 230.
++#
++# This software may be distributed and modified according to the terms of
++# the BSD 2-Clause license. Note that NO WARRANTY is provided.
++# See "LICENSE_BSD2.txt" for details.
++#
++# @TAG(DATA61_BSD)
++#
++
++set -e
++
++dataport_read /dev/uio0 4096
++echo -ne "This is a test user string\n\0" | dataport_write /dev/uio0 4096
++dataport_read /dev/uio0 4096
++consumes_event_wait /dev/uio0 &
++sleep 1
++emits_event_emit /dev/uio0
++wait
++echo "Finished crossvm test script"
+diff --git a/apps/Arm/wasmedge/qemu-arm-virt/devices.camkes b/apps/Arm/wasmedge/qemu-arm-virt/devices.camkes
+new file mode 100644
+index 0000000..0431c6f
+--- /dev/null
++++ b/apps/Arm/wasmedge/qemu-arm-virt/devices.camkes
+@@ -0,0 +1,49 @@
++/*
++ * Copyright 2018, Data61
++ * Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++ * ABN 41 687 119 230.
++ *
++ * This software may be distributed and modified according to the terms of
++ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
++ * See "LICENSE_BSD2.txt" for details.
++ *
++ * @TAG(DATA61_BSD)
++ */
++
++#include <configurations/vm.h>
++
++#define VM_INITRD_MAX_SIZE 0x1900000 //25 MB
++#define VM_RAM_BASE 0x40000000
++#define VM_RAM_SIZE 0x20000000
++#define VM_RAM_OFFSET 0x00000000
++#define VM_DTB_ADDR 0x4F000000
++#define VM_INITRD_ADDR 0x4D700000
++
++assembly {
++	composition {}
++	configuration {
++
++        vm0.linux_address_config = {
++            "linux_ram_base" : VAR_STRINGIZE(VM_RAM_BASE),
++            "linux_ram_paddr_base" : VAR_STRINGIZE(VM_RAM_BASE),
++            "linux_ram_size" : VAR_STRINGIZE(VM_RAM_SIZE),
++            "linux_ram_offset" : VAR_STRINGIZE(VM_RAM_OFFSET),
++            "dtb_addr" : VAR_STRINGIZE(VM_DTB_ADDR),
++            "initrd_max_size" : VAR_STRINGIZE(VM_INITRD_MAX_SIZE),
++            "initrd_addr" : VAR_STRINGIZE(VM_INITRD_ADDR)
++        };
++        vm0.linux_image_config = {
++            "linux_bootcmdline" : "pci=nomsi,realloc=off,bios initcall_blacklist=clk_disable_unused",
++            "linux_stdout" : "/pl011@9000000",
++        };
++
++        vm0.dtb = dtb([
++                        {"path": "/pl011@9000000"},
++                    ]);
++
++        vm0.untyped_mmios = [
++                    "0x8040000:12", // Interrupt Controller Virtual CPU interface (Virtual Machine view)
++                    "0x40000000:29", // Linux kernel memory regions
++                    ];
++	}
++}
+diff --git a/apps/Arm/wasmedge/settings.cmake b/apps/Arm/wasmedge/settings.cmake
+new file mode 100644
+index 0000000..a01e5f4
+--- /dev/null
++++ b/apps/Arm/wasmedge/settings.cmake
+@@ -0,0 +1,25 @@
++#
++# Copyright 2019, Data61
++# Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++# ABN 41 687 119 230.
++#
++# This software may be distributed and modified according to the terms of
++# the BSD 2-Clause license. Note that NO WARRANTY is provided.
++# See "LICENSE_BSD2.txt" for details.
++#
++# @TAG(DATA61_BSD)
++#
++
++set(supported "qemu-arm-virt")
++if(NOT "${PLATFORM}" IN_LIST supported)
++    message(FATAL_ERROR "PLATFORM: ${PLATFORM} not supported.
++         Supported: ${supported}")
++endif()
++set(VmPCISupport ON CACHE BOOL "" FORCE)
++set(LibUSB OFF CACHE BOOL "" FORCE)
++set(VmInitRdFile ON CACHE BOOL "" FORCE)
++if(${PLATFORM} STREQUAL "qemu-arm-virt")
++    # force cpu
++    set(QEMU_MEMORY "2048")
++    set(KernelArmCPU cortex-a53 CACHE STRING "" FORCE)
++endif()
+diff --git a/apps/Arm/wasmedge/src/cross_vm_connections.c b/apps/Arm/wasmedge/src/cross_vm_connections.c
+new file mode 100644
+index 0000000..1b3d336
+--- /dev/null
++++ b/apps/Arm/wasmedge/src/cross_vm_connections.c
+@@ -0,0 +1,52 @@
++/*
++ * Copyright 2019, Data61
++ * Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++ * ABN 41 687 119 230.
++ *
++ * This software may be distributed and modified according to the terms of
++ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
++ * See "LICENSE_BSD2.txt" for details.
++ *
++ * @TAG(DATA61_BSD)
++ */
++
++#include <camkes.h>
++#include <vmlinux.h>
++#include <sel4vm/guest_vm.h>
++
++#include <sel4vmmplatsupport/drivers/cross_vm_connection.h>
++#include <sel4vmmplatsupport/drivers/pci_helper.h>
++#include <pci/helper.h>
++
++#ifdef CONFIG_PLAT_QEMU_ARM_VIRT
++#define CONNECTION_BASE_ADDRESS 0xDF000000
++#else
++#define CONNECTION_BASE_ADDRESS 0x3F000000
++#endif
++
++// these are defined in the dataport's glue code
++extern dataport_caps_handle_t crossvm_dp_0_handle;
++extern dataport_caps_handle_t crossvm_dp_1_handle;
++
++static struct camkes_crossvm_connection connections[] = {
++    {&crossvm_dp_0_handle, ready_emit, -1, "conn_0"},
++    {&crossvm_dp_1_handle, NULL, -1, "conn_1"}
++};
++
++static int consume_callback(vm_t *vm, void *cookie)
++{
++    consume_connection_event(vm, connections[0].consume_badge, true);
++    return 0;
++}
++
++extern seL4_Word done_notification_badge(void);
++void init_cross_vm_connections(vm_t *vm, void *cookie)
++{
++    connections[0].consume_badge = done_notification_badge();
++    int err = register_async_event_handler(connections[0].consume_badge, consume_callback, NULL);
++    ZF_LOGF_IF(err, "Failed to register_async_event_handler for init_cross_vm_connections.");
++
++    cross_vm_connections_init(vm, CONNECTION_BASE_ADDRESS, connections, ARRAY_SIZE(connections));
++}
++
++DEFINE_MODULE(cross_vm_connections, NULL, init_cross_vm_connections)
+diff --git a/apps/Arm/wasmedge/src/wasmedge.cpp b/apps/Arm/wasmedge/src/wasmedge.cpp
+new file mode 100644
+index 0000000..9ae57be
+--- /dev/null
++++ b/apps/Arm/wasmedge/src/wasmedge.cpp
+@@ -0,0 +1,133 @@
++/*
++ * Copyright 2019, Data61
++ * Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++ * ABN 41 687 119 230.
++ *
++ * This software may be distributed and modified according to the terms of
++ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
++ * See "LICENSE_BSD2.txt" for details.
++ *
++ * @TAG(DATA61_BSD)
++ */
++
++#include <algorithm>
++#include <cstdio>
++#include <cstring>
++#include <memory>
++#include <stdexcept>
++#include <string_view>
++
++extern "C" {
++#include <camkes.h>
++extern void done_emit_underlying(void);
++extern char *morecore_area;
++extern size_t morecore_size;
++
++#define BUFSIZE 4096
++typedef struct input_s {
++  uint16_t command;
++  uint16_t size;
++  char data[BUFSIZE - sizeof(uint16_t) - sizeof(uint16_t)];
++} input_t;
++typedef union shm_u {
++  input_t input;
++  uint32_t output;
++} shm_t;
++enum {
++  RESET_BUFFER = 1,
++  SEND_PART = 2,
++  SEND_DONE = 3,
++  SET_ARG = 4,
++  RUN = 5,
++};
++}
++#undef likely
++#undef unlikely
++
++#include <host/wasi/wasimodule.h>
++#include <spdlog/spdlog.h>
++#include <vm/vm.h>
++
++int run(void) {
++  std::vector<uint8_t> buffer;
++  size_t cursor;
++  std::vector<std::string> args;
++  WasmEdge::Configure Conf;
++  Conf.addHostRegistration(WasmEdge::HostRegistration::Wasi);
++
++  shm_t *const shm = reinterpret_cast<shm_t *>(dest);
++
++  while (true) {
++    ready_wait();
++    switch (shm->input.command) {
++    case RESET_BUFFER: {
++      if (shm->input.size != 8) {
++        spdlog::error("input.size expect 8, got {}", shm->input.size);
++        shm->output = -1;
++        break;
++      }
++      uint64_t filesize;
++      std::memcpy(&filesize, shm->input.data, sizeof(filesize));
++      buffer.resize(filesize);
++      cursor = 0;
++      args.clear();
++      shm->output = 0;
++      break;
++    }
++    case SEND_PART: {
++      if (shm->input.size > buffer.size() - cursor) {
++        spdlog::error("input.size expect maximum {}, got {}",
++                      buffer.size() - cursor, shm->input.size);
++        shm->output = -1;
++        break;
++      }
++      std::memcpy(&buffer[cursor], shm->input.data, shm->input.size);
++      cursor += shm->input.size;
++      shm->output = 0;
++      break;
++    }
++    case SEND_DONE: {
++      if (cursor != buffer.size()) {
++        spdlog::error("cursor {} != buffer.size() {}", cursor, buffer.size());
++        shm->output = -1;
++        break;
++      }
++      shm->output = 0;
++      break;
++    }
++    case SET_ARG: {
++      args.emplace_back(shm->input.data, shm->input.size);
++      shm->output = 0;
++      break;
++    }
++    case RUN: {
++      using namespace std::literals;
++      WasmEdge::VM::VM VM(Conf);
++      WasmEdge::Host::WasiModule *WasiMod =
++          dynamic_cast<WasmEdge::Host::WasiModule *>(
++              VM.getImportModule(WasmEdge::HostRegistration::Wasi));
++      WasiMod->getEnv().init({}, "wasm.wasm"s, args, {});
++      spdlog::info("executing wasm file");
++      if (auto Res = VM.runWasmFile(
++              WasmEdge::Span<const WasmEdge::Byte>(buffer), "_start"sv);
++          Res || Res.error() == WasmEdge::ErrCode::Terminated) {
++        spdlog::info("execution success, exit code:{}",
++                     WasiMod->getEnv().getExitCode());
++        shm->output = WasiMod->getEnv().getExitCode();
++      } else {
++        spdlog::info("execution failed:{}", WasmEdge::ErrCodeStr[Res.error()]);
++        shm->output = static_cast<uint32_t>(Res.error());
++        break;
++      }
++      break;
++    }
++    default:
++      spdlog::error("Got unknown event");
++      shm->output = 0;
++      break;
++    }
++    done_emit_underlying();
++  }
++
++  return 0;
++}
+diff --git a/apps/Arm/wasmedge/wasmedge.camkes b/apps/Arm/wasmedge/wasmedge.camkes
+new file mode 100644
+index 0000000..f491132
+--- /dev/null
++++ b/apps/Arm/wasmedge/wasmedge.camkes
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++
++#include <configurations/vm.h>
++
++import <std_connector.camkes>;
++import <global-connectors.camkes>;
++import <seL4VMDTBPassthrough.idl4>;
++import <FileServerInterface.camkes>;
++import <FileServer/FileServer.camkes>;
++import <SerialServer/SerialServer.camkes>;
++import <TimeServer/TimeServer.camkes>;
++import <vm-connectors.camkes>;
++import <devices.camkes>;
++
++#define FIRST_CROSS_VM_BADGE (1 << 3)
++
++component WasmEdge {
++    control;
++    consumes Ready ready;
++    emits Done done;
++    dataport Buf(4096) dest;
++    dataport Buf(4096) src;
++}
++
++component VM {
++    VM_INIT_DEF()
++    dataport Buf(4096) crossvm_dp_0;
++    dataport Buf(4096) crossvm_dp_1;
++    emits Ready ready;
++    consumes Done done;
++}
++
++assembly {
++    composition {
++        VM_GENERAL_COMPOSITION_DEF()
++        VM_COMPOSITION_DEF(0)
++        component WasmEdge wasmedge;
++
++        connection seL4Notification event_conn_0(from vm0.ready,
++                                             to wasmedge.ready);
++        connection seL4GlobalAsynch event_conn_1(from wasmedge.done,
++                                             to vm0.done);
++        connection seL4SharedDataWithCaps cross_vm_conn_0(from wasmedge.dest,
++                                                              to vm0.crossvm_dp_0);
++        connection seL4SharedDataWithCaps cross_vm_conn_1(from wasmedge.src,
++                                                              to vm0.crossvm_dp_1);
++        connection seL4VMDTBPassthrough vm_dtb(from vm0.dtb_self, to vm0.dtb);
++    }
++    configuration {
++        VM_GENERAL_CONFIGURATION_DEF()
++        VM_CONFIGURATION_DEF(0)
++
++        vm0.num_extra_frame_caps = 0;
++        vm0.extra_frame_map_address = 0;
++        vm0.cnode_size_bits = 23;
++        vm0.simple_untyped24_pool = 12;
++
++        vm0.crossvm_dp_0_id = 0;
++        vm0.crossvm_dp_0_size = 4096;
++        vm0.crossvm_dp_1_id = 0;
++        vm0.crossvm_dp_1_size = 4096;
++
++        wasmedge.heap_size = 0x4000000;
++    }
++}

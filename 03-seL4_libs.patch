@@ -1,0 +1,151 @@
+diff --git a/libsel4debug/src/backtrace.c b/libsel4debug/src/backtrace.c
+index 98da358..f094509 100644
+--- a/libsel4debug/src/backtrace.c
++++ b/libsel4debug/src/backtrace.c
+@@ -31,6 +31,7 @@ seL4_IPCBuffer *seL4_GetIPCBuffer(void) __attribute__((no_instrument_function));
+ 
+ int backtrace(void **buffer, int size)
+ {
++#if 0
+     int *bt_stack_sz = (int *)BACKTRACE_BASE;
+     void **bt_stack = (void **)(BACKTRACE_BASE + sizeof(int));
+ 
+@@ -43,13 +44,26 @@ int backtrace(void **buffer, int size)
+     }
+ 
+     return i;
++#endif
++  struct frame_record {
++    struct frame_record *parent;
++    __UINTPTR_TYPE__ return_addr;
++  };
++
++  unsigned int i = 0;
++  struct frame_record *fr = __builtin_frame_address(0U);
++  while (fr != 0 && i < size) {
++    buffer[i++] = (void *)fr->return_addr;
++    fr = fr->parent;
++  }
++  return i;
+ }
+ 
+ #ifdef CONFIG_LIBSEL4DEBUG_FUNCTION_INSTRUMENTATION_BACKTRACE
+ 
+ void __cyg_profile_func_enter(void *func, void *caller)
+ {
+-    if (seL4_GetIPCBuffer() == NULL) {
++    if (seL4_GetIPCBuffer() == 0) {
+         /* The caller doesn't have a valid IPC buffer. Assume it has not been
+          * setup yet and just skip logging the current function.
+          */
+@@ -65,7 +79,7 @@ void __cyg_profile_func_enter(void *func, void *caller)
+ 
+ void __cyg_profile_func_exit(void *func, void *caller)
+ {
+-    if (seL4_GetIPCBuffer() == NULL) {
++    if (seL4_GetIPCBuffer() == 0) {
+         return;
+     }
+     int *bt_stack_sz = (int *)BACKTRACE_BASE;
+diff --git a/libsel4debug/src/sel4_arch/aarch64/stack_trace.c b/libsel4debug/src/sel4_arch/aarch64/stack_trace.c
+new file mode 100644
+index 0000000..80bae7f
+--- /dev/null
++++ b/libsel4debug/src/sel4_arch/aarch64/stack_trace.c
+@@ -0,0 +1,40 @@
++/*
++ * Copyright 2017, Data61
++ * Commonwealth Scientific and Industrial Research Organisation (CSIRO)
++ * ABN 41 687 119 230.
++ *
++ * This software may be distributed and modified according to the terms of
++ * the BSD 2-Clause license. Note that NO WARRANTY is provided.
++ * See "LICENSE_BSD2.txt" for details.
++ *
++ * @TAG(DATA61_BSD)
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <assert.h>
++#include <sel4debug/stack_trace.h>
++
++#define STACK_TRACE(x) do { \
++    void *frame = __builtin_frame_address(x); \
++    if (!frame) return; \
++    void *ret = __builtin_return_address(x); \
++    assert(ret); \
++    void *addr = __builtin_extract_return_addr(ret); \
++    printf("Possible stack call (%d) from %p with frame at %p\n", x, addr, frame); \
++    } while (0) \
++    /**/
++
++void print_stack_trace(void) {
++    struct frame_record {
++        struct frame_record *parent;
++        void *return_addr;
++    };
++
++    unsigned int i = 0;
++    struct frame_record *fr = __builtin_frame_address(0U);
++    while (fr != 0) {
++        printf("Possible stack call (%d) from %p with frame at %p\n", i++, fr->return_addr, fr);
++        fr = fr->parent;
++    }
++}
+diff --git a/libsel4muslcsys/src/sys_morecore.c b/libsel4muslcsys/src/sys_morecore.c
+index bfe49ae..0f9b600 100644
+--- a/libsel4muslcsys/src/sys_morecore.c
++++ b/libsel4muslcsys/src/sys_morecore.c
+@@ -353,3 +353,9 @@ long sys_mmap2(va_list ap)
+      * so this will not overflow */
+     return sys_mmap_impl(addr, length, prot, flags, fd, offset * 4096);
+ }
++
++long sys_munmap(va_list ap)
++{
++    ZF_LOGV("calling dummy version of sys_munmap()\n");
++    return 0;
++}
+diff --git a/libsel4muslcsys/src/syscalls.h b/libsel4muslcsys/src/syscalls.h
+index c8c788e..1acab96 100644
+--- a/libsel4muslcsys/src/syscalls.h
++++ b/libsel4muslcsys/src/syscalls.h
+@@ -33,6 +33,7 @@ long sys_brk(va_list ap);
+ long sys_mmap2(va_list ap);
+ long sys_mmap(va_list ap);
+ long sys_mremap(va_list ap);
++long sys_munmap(va_list ap);
+ long sys_write(va_list ap);
+ long sys_writev(va_list ap);
+ long sys_madvise(va_list ap);
+diff --git a/libsel4muslcsys/src/vsyscall.c b/libsel4muslcsys/src/vsyscall.c
+index 4af1d26..06675be 100644
+--- a/libsel4muslcsys/src/vsyscall.c
++++ b/libsel4muslcsys/src/vsyscall.c
+@@ -151,6 +151,9 @@ static muslcsys_syscall_t syscall_table[MUSLC_NUM_SYSCALLS] = {
+ #endif
+ #ifdef __NR_mmap
+     [__NR_mmap] = sys_mmap,
++#endif
++#ifdef __NR_munmap
++    [__NR_munmap] = sys_munmap,
+ #endif
+     [__NR_mremap] = sys_mremap,
+     [__NR_madvise] = sys_madvise,
+@@ -244,6 +247,7 @@ static void CONSTRUCTOR(CONSTRUCTOR_MIN_PRIORITY) install_default_cpio(void)
+ #endif
+ 
+ #ifdef CONFIG_PRINTING
++#include <sel4debug/stack_trace.h>
+ static void debug_error(int sysnum)
+ {
+     char buf[100];
+@@ -252,6 +256,7 @@ static void debug_error(int sysnum)
+     for (i = 0; buf[i]; i++) {
+         seL4_DebugPutChar(buf[i]);
+     }
++    print_stack_trace();
+ }
+ #else
+ static void debug_error(int sysnum)

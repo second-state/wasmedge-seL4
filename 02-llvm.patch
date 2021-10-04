@@ -1,0 +1,88 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+new file mode 100644
+index 000000000000..9fe8c522cf24
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,63 @@
++# SPDX-License-Identifier: Apache-2.0
++
++set(PACKAGE_VERSION 11.1.0)
++set(Python3_EXECUTABLE ${PYTHON3})
++
++add_definitions(-U__linux -U__linux__)
++
++set(LIBUNWIND_ENABLE_SHARED OFF CACHE BOOL "Build libunwind as a shared library.")
++set(LIBUNWIND_ENABLE_THREADS ON CACHE BOOL "Build libunwind with threading support.")
++set(LIBUNWIND_USE_COMPILER_RT OFF CACHE BOOL "Use compiler-rt instead of libgcc")
++
++set(LIBCXX_ENABLE_SHARED OFF CACHE BOOL "Build libc++ as a shared library.")
++set(LIBCXX_CXX_ABI "libcxxabi" CACHE STRING "Specify C++ ABI library to use.")
++set(LIBCXX_ENABLE_STATIC_ABI_LIBRARY ON CACHE BOOL "Use a static copy of the ABI library when linking libc++. This option cannot be used with LIBCXX_ENABLE_ABI_LINKER_SCRIPT.")
++set(LIBCXX_ENABLE_THREADS ON CACHE BOOL "Build libc++ with support for threads.")
++set(LIBCXX_HAS_PTHREAD_API ON CACHE BOOL "Ignore auto-detection and force use of pthread API")
++set(LIBCXX_ENABLE_THREAD_UNSAFE_C_FUNCTIONS ON CACHE BOOL "Build libc++ with support for thread-unsafe C functions")
++set(LIBCXX_ENABLE_MONOTONIC_CLOCK ON CACHE BOOL "Build libc++ with support for a monotonic clock. This option may only be set to OFF when LIBCXX_ENABLE_THREADS=OFF.")
++set(LIBCXX_ENABLE_FILESYSTEM ON CACHE BOOL "Build filesystem as part of the main libc++ library")
++set(LIBCXX_HAS_MUSL_LIBC ON CACHE BOOL "Build libc++ with support for the Musl C library")
++set(LIBCXX_USE_COMPILER_RT OFF CACHE BOOL "Use compiler-rt instead of libgcc")
++
++set(LIBCXXABI_ENABLE_SHARED OFF CACHE BOOL "Build libc++abi as a shared library.")
++set(LIBCXXABI_ENABLE_THREADS ON CACHE BOOL "Build with threads enabled")
++set(LIBCXXABI_HAS_PTHREAD_API ON CACHE BOOL "Ignore auto-detection and force use of pthread API")
++set(LIBCXXABI_BAREMETAL ON CACHE BOOL "Build libc++abi for baremetal targets.")
++set(LIBCXXABI_USE_LLVM_UNWINDER ON CACHE BOOL "Build and use the LLVM unwinder.")
++set(LIBCXXABI_ENABLE_STATIC_UNWINDER ON CACHE BOOL "Statically link the LLVM unwinder.")
++set(LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_STATIC_LIBRARY ON CACHE BOOL "Statically link the LLVM unwinder to static library")
++set(LIBCXXABI_LIBUNWIND_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/libunwind/include CACHE PATH "Specify path to libunwind includes.")
++set(LIBCXXABI_USE_COMPILER_RT OFF CACHE BOOL "Use compiler-rt instead of libgcc")
++set(ANDROID ON)
++
++add_subdirectory(libunwind)
++add_subdirectory(libcxxabi)
++add_subdirectory(libcxx)
++
++get_target_property(TMP unwind_static LINK_LIBRARIES)
++list(REMOVE_ITEM TMP gcc_s gcc c m dl rt pthread)
++set_target_properties(unwind_static PROPERTIES LINK_LIBRARIES "${TMP}")
++get_target_property(TMP unwind_static INTERFACE_LINK_LIBRARIES)
++list(REMOVE_ITEM TMP $<LINK_ONLY:c> $<LINK_ONLY:gcc> $<LINK_ONLY:dl> $<LINK_ONLY:pthread>)
++set_target_properties(unwind_static PROPERTIES INTERFACE_LINK_LIBRARIES "${TMP}")
++
++get_target_property(TMP cxxabi_static LINK_LIBRARIES)
++list(REMOVE_ITEM TMP gcc_s gcc c m dl rt pthread)
++set_target_properties(cxxabi_static PROPERTIES LINK_LIBRARIES "${TMP}")
++get_target_property(TMP cxxabi_static INTERFACE_LINK_LIBRARIES)
++list(REMOVE_ITEM TMP $<LINK_ONLY:c> $<LINK_ONLY:gcc> $<LINK_ONLY:dl> $<LINK_ONLY:pthread>)
++set_target_properties(cxxabi_static PROPERTIES INTERFACE_LINK_LIBRARIES "${TMP}")
++
++get_target_property(TMP cxx_static LINK_LIBRARIES)
++list(REMOVE_ITEM TMP gcc_s gcc c m dl rt pthread)
++set_target_properties(cxx_static PROPERTIES LINK_LIBRARIES "${TMP}")
++get_target_property(TMP cxx_static INTERFACE_LINK_LIBRARIES)
++list(REMOVE_ITEM TMP $<LINK_ONLY:c> $<LINK_ONLY:gcc> $<LINK_ONLY:dl> $<LINK_ONLY:pthread>)
++set_target_properties(cxx_static PROPERTIES INTERFACE_LINK_LIBRARIES "${TMP}")
++
++target_include_directories(unwind_static SYSTEM BEFORE PUBLIC $<TARGET_PROPERTY:muslc,INTERFACE_INCLUDE_DIRECTORIES>)
++target_include_directories(cxxabi_static SYSTEM BEFORE PUBLIC $<TARGET_PROPERTY:muslc,INTERFACE_INCLUDE_DIRECTORIES>)
++target_include_directories(cxx_static SYSTEM BEFORE PUBLIC $<TARGET_PROPERTY:muslc,INTERFACE_INCLUDE_DIRECTORIES>)
++target_include_directories(cxx_experimental SYSTEM BEFORE PUBLIC $<TARGET_PROPERTY:muslc,INTERFACE_INCLUDE_DIRECTORIES>)
++target_compile_definitions(cxxabi_static PUBLIC "-D_Noreturn=__attribute__((noreturn))")
+diff --git a/Findlibcxx.cmake b/Findlibcxx.cmake
+new file mode 100644
+index 000000000000..4fba16b2e704
+--- /dev/null
++++ b/Findlibcxx.cmake
+@@ -0,0 +1,10 @@
++set(LIBCXX_CURRENT_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "")
++mark_as_advanced(LIBCXX_CURRENT_DIR)
++set(LIBCXX_HAS_DL_LIB NO)
++set(LIBCXX_HAS_RT_LIB NO)
++
++add_compile_options(-O2 -g)
++add_subdirectory(${LIBCXX_CURRENT_DIR} libcxx)
++
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(libcxx DEFAULT_MSG LIBCXX_CURRENT_DIR)
+diff --git a/libcxxabi/include/features.h b/libcxxabi/include/features.h
+new file mode 100644
+index 000000000000..e69de29bb2d1

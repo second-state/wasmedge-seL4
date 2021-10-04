@@ -1,0 +1,693 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 97dc83de..28d9593d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -29,7 +29,6 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
+ find_package(Filesystem REQUIRED Final Experimental)
+ find_package(Threads REQUIRED)
+ 
+-find_package(Boost QUIET)
+ if(${Boost_FOUND})
+ else()
+   FetchContent_Declare(
+diff --git a/FindWasmEdge.cmake b/FindWasmEdge.cmake
+new file mode 100644
+index 00000000..825d5b2d
+--- /dev/null
++++ b/FindWasmEdge.cmake
+@@ -0,0 +1,10 @@
++set(WasmEdge_CURRENT_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "")
++mark_as_advanced(WasmEdge_CURRENT_DIR)
++set(WASMEDGE_BUILD_AOT_RUNTIME OFF CACHE BOOL "Enable WasmEdge LLVM-based ahead of time compilation runtime.")
++set(WASMEDGE_BUILD_TOOLS OFF CACHE BOOL "Generate wasmedge and wasmedgec tools.")
++
++add_compile_options(-O2 -g)
++add_subdirectory(${WasmEdge_CURRENT_DIR} wasmedge)
++
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(WasmEdge DEFAULT_MSG WasmEdge_CURRENT_DIR)
+diff --git a/cmake/Helper.cmake b/cmake/Helper.cmake
+index 21cc640c..f8e3ef08 100644
+--- a/cmake/Helper.cmake
++++ b/cmake/Helper.cmake
+@@ -18,7 +18,6 @@ endif()
+ list(APPEND WASMEDGE_CFLAGS
+   -Wall
+   -Wextra
+-  -Werror
+   -Wno-error=pedantic
+   -Wno-psabi
+ )
+diff --git a/include/common/defines.h b/include/common/defines.h
+index 64067d5c..dd4aa6ca 100644
+--- a/include/common/defines.h
++++ b/include/common/defines.h
+@@ -14,13 +14,26 @@
+ #if defined(linux) || defined(__linux) || defined(__linux__) ||                \
+     defined(__gnu_linux__)
+ 
++#if defined(__KERNEL_32__) || defined(__KERNEL_64__)
++
++#define WASMEDGE_OS_SEL4 1
++#define WASMEDGE_OS_LINUX 0
++#define WASMEDGE_OS_MACOS 0
++#define WASMEDGE_OS_WINDOWS 0
++
++#else
++
++#define WASMEDGE_OS_SEL4 0
+ #define WASMEDGE_OS_LINUX 1
+ #define WASMEDGE_OS_MACOS 0
+ #define WASMEDGE_OS_WINDOWS 0
+ 
++#endif
++
+ #elif defined(macintosh) || defined(Macintosh) ||                              \
+     (defined(__APPLE__) && defined(__MACH__))
+ 
++#define WASMEDGE_OS_SEL4 0
+ #define WASMEDGE_OS_LINUX 0
+ #define WASMEDGE_OS_MACOS 1
+ #define WASMEDGE_OS_WINDOWS 0
+@@ -28,6 +41,7 @@
+ #elif defined(_WIN32) || defined(_WIN64) || defined(__WIN32__) ||              \
+     defined(__TOS_WIN__) || defined(__WINDOWS__)
+ 
++#define WASMEDGE_OS_SEL4 0
+ #define WASMEDGE_OS_LINUX 0
+ #define WASMEDGE_OS_MACOS 0
+ #define WASMEDGE_OS_WINDOWS 1
+diff --git a/include/common/timer.h b/include/common/timer.h
+index 3626cd81..71cdbe28 100644
+--- a/include/common/timer.h
++++ b/include/common/timer.h
+@@ -11,6 +11,7 @@
+ //===----------------------------------------------------------------------===//
+ #pragma once
+ 
++#include "defines.h"
+ #include <array>
+ #include <cassert>
+ #include <chrono>
+@@ -24,7 +25,11 @@ enum class TimerTag : uint32_t { Wasm, HostFunc, Max };
+ 
+ class Timer {
+ public:
++#if WASMEDGE_OS_SEL4
++  using Clock = std::chrono::system_clock;
++#else
+   using Clock = std::chrono::steady_clock;
++#endif
+ 
+   constexpr Timer() noexcept { reset(); }
+ 
+diff --git a/include/common/variant.h b/include/common/variant.h
+index cc4edb73..b43ae07f 100644
+--- a/include/common/variant.h
++++ b/include/common/variant.h
+@@ -43,28 +43,28 @@ union VariadicUnion<FirstT, RestT...> {
+ 
+   template <typename T> constexpr const T &get() const &noexcept {
+     if constexpr (std::is_same_v<T, FirstT>) {
+-      return *std::launder(reinterpret_cast<const FirstT *>(&First));
++      return First;
+     } else {
+       return Rest.template get<T>();
+     }
+   }
+   template <typename T> constexpr T &get() &noexcept {
+     if constexpr (std::is_same_v<T, FirstT>) {
+-      return *std::launder(reinterpret_cast<FirstT *>(&First));
++      return First;
+     } else {
+       return Rest.template get<T>();
+     }
+   }
+   template <typename T> constexpr const T &&get() const &&noexcept {
+     if constexpr (std::is_same_v<T, FirstT>) {
+-      return std::move(*std::launder(reinterpret_cast<const FirstT *>(&First)));
++      return std::move(First);
+     } else {
+       return std::move(Rest).template get<T>();
+     }
+   }
+   template <typename T> constexpr T &&get() &&noexcept {
+     if constexpr (std::is_same_v<T, FirstT>) {
+-      return std::move(*std::launder(reinterpret_cast<FirstT *>(&First)));
++      return std::move(First);
+     } else {
+       return std::move(Rest).template get<T>();
+     }
+@@ -90,7 +90,7 @@ union VariadicUnion<FirstT, RestT...> {
+     }
+   }
+ 
+-  std::aligned_storage_t<sizeof(FirstT), alignof(FirstT)> First;
++  FirstT First;
+   VariadicUnion<RestT...> Rest;
+ };
+ 
+diff --git a/include/host/wasi/environ.h b/include/host/wasi/environ.h
+index c02486da..f25cfbb3 100644
+--- a/include/host/wasi/environ.h
++++ b/include/host/wasi/environ.h
+@@ -24,7 +24,11 @@ namespace Host {
+ namespace WASI {
+ 
+ inline namespace detail {
++#if !WASMEDGE_OS_SEL4
+ inline constexpr const int32_t kIOVMax = 1024;
++#else
++inline constexpr const int32_t kIOVMax = 16;
++#endif
+ } // namespace detail
+ 
+ class EVPoller;
+diff --git a/include/host/wasi/inode.h b/include/host/wasi/inode.h
+index 6982972b..9bf8430d 100644
+--- a/include/host/wasi/inode.h
++++ b/include/host/wasi/inode.h
+@@ -9,7 +9,7 @@
+ #include <string_view>
+ #include <vector>
+ 
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+ #include <dirent.h>
+ #include <sys/stat.h>
+ 
+@@ -24,7 +24,7 @@ namespace WasmEdge {
+ namespace Host {
+ namespace WASI {
+ 
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+ struct FdHolder {
+   FdHolder(const FdHolder &) = delete;
+   FdHolder &operator=(const FdHolder &) = delete;
+@@ -81,7 +81,7 @@ struct DirHolder {
+ };
+ #endif
+ 
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+ struct TimerHolder {
+   TimerHolder(const TimerHolder &) = delete;
+   TimerHolder &operator=(const TimerHolder &) = delete;
+@@ -139,7 +139,7 @@ struct HandleHolder {
+ class Poller;
+ 
+ class INode
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+     : public FdHolder
+ #elif WASMEDGE_OS_WINDOWS
+     : public HandleHolder
+@@ -541,7 +541,7 @@ private:
+ 
+   __wasi_filetype_t unsafeFiletype() const noexcept;
+ 
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+ public:
+   using FdHolder::FdHolder;
+ 
+@@ -559,7 +559,7 @@ public:
+ };
+ 
+ class Poller
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+     : public FdHolder
+ #endif
+ {
+@@ -588,7 +588,7 @@ public:
+ private:
+   std::vector<__wasi_event_t> Events;
+ 
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+ private:
+   struct Timer : public FdHolder {
+     Timer(const Timer &) = delete;
+@@ -601,9 +601,11 @@ private:
+                             __wasi_timestamp_t Precision,
+                             __wasi_subclockflags_t Flags) noexcept;
+ 
++#if !WASMEDGE_OS_SEL4
+ #if !__GLIBC_PREREQ(2, 8)
+     FdHolder Notify;
+     TimerHolder TimerId;
++#endif
+ #endif
+   };
+ 
+diff --git a/lib/aot/compiler.cpp b/lib/aot/compiler.cpp
+index 194744df..363a94ca 100644
+--- a/lib/aot/compiler.cpp
++++ b/lib/aot/compiler.cpp
+@@ -3855,7 +3855,7 @@ Expect<void> outputNativeLibrary(const std::filesystem::path &OutputPath,
+             "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+             ObjectName.c_str(), "-o", OutputPath.u8string().c_str(), "-lSystem"
+       },
+-#elif WASMEDGE_OS_LINUX
++#elif WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+   lld::elf::link(
+       std::array{"ld.lld", "--shared", "--gc-sections", "--discard-all",
+                  ObjectName.c_str(), "-o", OutputPath.u8string().c_str()},
+@@ -4099,7 +4099,7 @@ Expect<void> Compiler::compile(Span<const Byte> Data, const AST::Module &Module,
+   LLModule.setTargetTriple(llvm::sys::getProcessTriple());
+ #if WASMEDGE_OS_MACOS
+   LLModule.setPICLevel(llvm::PICLevel::Level::BigPIC);
+-#elif WASMEDGE_OS_LINUX | WASMEDGE_OS_WINDOWS
++#elif WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX | WASMEDGE_OS_WINDOWS
+   LLModule.setPICLevel(llvm::PICLevel::Level::SmallPIC);
+ #endif
+   CompileContext NewContext(LLModule,
+diff --git a/lib/ast/section.cpp b/lib/ast/section.cpp
+index cb0dde34..2795b54b 100644
+--- a/lib/ast/section.cpp
++++ b/lib/ast/section.cpp
+@@ -162,7 +162,7 @@ inline constexpr uint32_t HostVersion() noexcept {
+ }
+ 
+ inline constexpr uint8_t HostOSType() noexcept {
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_LINUX || WASMEDGE_OS_SEL4
+   return UINT8_C(1);
+ #elif WASMEDGE_OS_MACOS
+   return UINT8_C(2);
+diff --git a/lib/host/wasi/CMakeLists.txt b/lib/host/wasi/CMakeLists.txt
+index 5e62f3f6..459ff5ab 100644
+--- a/lib/host/wasi/CMakeLists.txt
++++ b/lib/host/wasi/CMakeLists.txt
+@@ -37,9 +37,9 @@ target_link_libraries(wasmedgeHostModuleWasi
+   wasmedgeSystem
+ )
+ 
+-if(NOT APPLE AND NOT WIN32)
+-  target_link_libraries(wasmedgeHostModuleWasi
+-    PUBLIC
+-    rt
+-  )
+-endif()
++#if(NOT APPLE AND NOT WIN32)
++#  target_link_libraries(wasmedgeHostModuleWasi
++#    PUBLIC
++#    rt
++#  )
++#endif()
+diff --git a/lib/host/wasi/clock-linux.cpp b/lib/host/wasi/clock-linux.cpp
+index 94f2632a..a480c176 100644
+--- a/lib/host/wasi/clock-linux.cpp
++++ b/lib/host/wasi/clock-linux.cpp
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: Apache-2.0
+ #include "common/defines.h"
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+ 
+ #include "host/wasi/clock.h"
+ #include "linux.h"
+diff --git a/lib/host/wasi/environ-linux.cpp b/lib/host/wasi/environ-linux.cpp
+index e5fc3445..2e51099d 100644
+--- a/lib/host/wasi/environ-linux.cpp
++++ b/lib/host/wasi/environ-linux.cpp
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: Apache-2.0
+ #include "common/defines.h"
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+ 
+ #include "common/errcode.h"
+ #include "host/wasi/environ.h"
+diff --git a/lib/host/wasi/inode-linux.cpp b/lib/host/wasi/inode-linux.cpp
+index c241cc2e..c36afeea 100644
+--- a/lib/host/wasi/inode-linux.cpp
++++ b/lib/host/wasi/inode-linux.cpp
+@@ -3,7 +3,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <netinet/in.h>
+-#if WASMEDGE_OS_LINUX
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX
+ 
+ #include "common/errcode.h"
+ #include "host/wasi/environ.h"
+@@ -171,6 +171,7 @@ WasiExpect<void> INode::fdDatasync() const noexcept {
+ }
+ 
+ WasiExpect<void> INode::fdFdstatGet(__wasi_fdstat_t &FdStat) const noexcept {
++#if !WASMEDGE_OS_SEL4
+   if (auto Res = updateStat(); unlikely(!Res)) {
+     return WasiUnexpect(Res);
+   }
+@@ -194,6 +195,10 @@ WasiExpect<void> INode::fdFdstatGet(__wasi_fdstat_t &FdStat) const noexcept {
+       FdStat.fs_flags |= __WASI_FDFLAGS_RSYNC | __WASI_FDFLAGS_SYNC;
+     }
+   }
++#else
++  FdStat.fs_filetype = __WASI_FILETYPE_BLOCK_DEVICE;
++  FdStat.fs_flags = static_cast<__wasi_fdflags_t>(0);
++#endif
+ 
+   return {};
+ }
+@@ -1093,8 +1098,10 @@ WasiExpect<void> Poller::Timer::create(__wasi_clockid_t Clock,
+   }
+ 
+   this->FdHolder::operator=(std::move(Timer));
++#if !WASMEDGE_OS_SEL4
+   this->Notify = std::move(Notify);
+   this->TimerId = std::move(TimerId);
++#endif
+   return {};
+ }
+ #endif
+diff --git a/lib/host/wasi/linux.h b/lib/host/wasi/linux.h
+index 949d3a1d..a4d768aa 100644
+--- a/lib/host/wasi/linux.h
++++ b/lib/host/wasi/linux.h
+@@ -1,9 +1,12 @@
+ // SPDX-License-Identifier: Apache-2.0
+ #include "common/defines.h"
+-#if !WASMEDGE_OS_LINUX
++#if !WASMEDGE_OS_SEL4 && !WASMEDGE_OS_LINUX
+ #error
+ #endif
+ 
++#if WASMEDGE_OS_SEL4
++#define __GLIBC_PREREQ(...) (0)
++#endif
+ // Uncomment these flag to test CentOS 6
+ // #undef __GLIBC_MINOR__
+ // #define __GLIBC_MINOR__ 5
+@@ -269,6 +272,7 @@ inline constexpr int toAdvice(__wasi_advice_t Advice) noexcept {
+ }
+ 
+ inline constexpr __wasi_filetype_t fromFileType(mode_t Mode) noexcept {
++#if !WASMEDGE_OS_SEL4
+   switch (Mode & S_IFMT) {
+   case S_IFBLK:
+     return __WASI_FILETYPE_BLOCK_DEVICE;
+@@ -286,6 +290,9 @@ inline constexpr __wasi_filetype_t fromFileType(mode_t Mode) noexcept {
+   default:
+     return __WASI_FILETYPE_UNKNOWN;
+   }
++#else
++  return __WASI_FILETYPE_REGULAR_FILE;
++#endif
+ }
+ 
+ inline constexpr __wasi_filetype_t fromFileType(uint8_t Type) noexcept {
+diff --git a/lib/host/wasmedge_process/processfunc.cpp b/lib/host/wasmedge_process/processfunc.cpp
+index 5a5fccb7..970b8e79 100644
+--- a/lib/host/wasmedge_process/processfunc.cpp
++++ b/lib/host/wasmedge_process/processfunc.cpp
+@@ -16,6 +16,8 @@
+ #elif WASMEDGE_OS_WINDOWS
+ #endif
+ 
++#define __GLIBC_PREREQ(a, b) 1
++
+ namespace WasmEdge {
+ namespace Host {
+ 
+diff --git a/lib/loader/CMakeLists.txt b/lib/loader/CMakeLists.txt
+index 7d6c2107..a49914be 100644
+--- a/lib/loader/CMakeLists.txt
++++ b/lib/loader/CMakeLists.txt
+@@ -13,12 +13,12 @@ target_link_libraries(wasmedgeLoaderFileMgr
+   std::filesystem
+ )
+ 
+-if(NOT WIN32)
+-  target_link_libraries(wasmedgeLoaderFileMgr
+-    PUBLIC
+-    dl
+-  )
+-endif()
++#if(NOT WIN32)
++#  target_link_libraries(wasmedgeLoaderFileMgr
++#    PUBLIC
++#    dl
++#  )
++#endif()
+ 
+ wasmedge_add_library(wasmedgeLoader
+   loader.cpp
+diff --git a/lib/loader/loader.cpp b/lib/loader/loader.cpp
+index b226dc77..6c587e5d 100644
+--- a/lib/loader/loader.cpp
++++ b/lib/loader/loader.cpp
+@@ -4,6 +4,8 @@
+ #include "common/filesystem.h"
+ #include "common/log.h"
+ 
++#if !WASMEDGE_OS_SEL4
++
+ #include <fstream>
+ #include <string_view>
+ 
+@@ -135,3 +137,37 @@ Loader::parseModule(Span<const uint8_t> Code) {
+ 
+ } // namespace Loader
+ } // namespace WasmEdge
++
++#else // !WASMEDGE_OS_SEL4
++
++namespace WasmEdge {
++namespace Loader {
++
++/// Load data from file path. See "include/loader/loader.h".
++Expect<std::vector<Byte>> Loader::loadFile(const std::filesystem::path &) {
++  return Unexpect(ErrCode::IllegalPath);
++}
++
++/// Parse module from file path. See "include/loader/loader.h".
++Expect<std::unique_ptr<AST::Module>>
++Loader::parseModule(const std::filesystem::path &) {
++  return Unexpect(ErrCode::IllegalPath);
++}
++
++Expect<std::unique_ptr<AST::Module>>
++Loader::parseModule(Span<const uint8_t> Code) {
++  auto Mod = std::make_unique<AST::Module>();
++  if (auto Res = FMgr.setCode(Code); !Res) {
++    return Unexpect(Res);
++  }
++  if (auto Res = Mod->loadBinary(FMgr, Conf)) {
++    return Mod;
++  } else {
++    return Unexpect(Res);
++  }
++}
++
++} // namespace Loader
++} // namespace WasmEdge
++
++#endif // !WASMEDGE_OS_SEL4
+diff --git a/lib/loader/shared_library.cpp b/lib/loader/shared_library.cpp
+index e4c5b3a6..f1803c3a 100644
+--- a/lib/loader/shared_library.cpp
++++ b/lib/loader/shared_library.cpp
+@@ -12,7 +12,7 @@
+ namespace winapi = boost::winapi;
+ #elif WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+ #include <dlfcn.h>
+-#else
++#elif !WASMEDGE_OS_SEL4
+ #error Unsupported os!
+ #endif
+ 
+@@ -38,6 +38,7 @@ namespace Loader {
+ 
+ /// Open so file. See "include/loader/shared_library.h".
+ Expect<void> SharedLibrary::load(const std::filesystem::path &Path) noexcept {
++#if !WASMEDGE_OS_SEL4
+ #if WASMEDGE_OS_WINDOWS
+   Handle = winapi::load_library_ex(Path.c_str(), nullptr, 0);
+ #else
+@@ -66,6 +67,9 @@ Expect<void> SharedLibrary::load(const std::filesystem::path &Path) noexcept {
+     return Unexpect(ErrCode::IllegalPath);
+   }
+   return {};
++#else
++  return Unexpect(ErrCode::IllegalPath);
++#endif
+ }
+ 
+ Expect<void> SharedLibrary::load(const AST::AOTSection &AOTSec) noexcept {
+@@ -116,6 +120,7 @@ Expect<void> SharedLibrary::load(const AST::AOTSection &AOTSec) noexcept {
+ }
+ 
+ void SharedLibrary::unload() noexcept {
++#if !WASMEDGE_OS_SEL4
+   if (Binary) {
+     Allocator::set_chunk_readable_writable(Binary, BinarySize);
+     Allocator::release_chunk(Binary, BinarySize);
+@@ -125,13 +130,15 @@ void SharedLibrary::unload() noexcept {
+ #if WASMEDGE_OS_WINDOWS
+     boost::winapi::FreeLibrary(Handle);
+ #else
+-    ::dlclose(Handle);
++    /*::dlclose(Handle)*/;
+ #endif
+     Handle = NativeHandle{};
+   }
++#endif
+ }
+ 
+ void *SharedLibrary::getSymbolAddr(const char *Name) const noexcept {
++#if !WASMEDGE_OS_SEL4
+   if (!Handle) {
+     return nullptr;
+   }
+@@ -141,6 +148,9 @@ void *SharedLibrary::getSymbolAddr(const char *Name) const noexcept {
+ #else
+   return ::dlsym(Handle, Name);
+ #endif
++#else
++  return nullptr;
++#endif
+ }
+ 
+ uintptr_t SharedLibrary::getOffset() const noexcept {
+diff --git a/lib/system/allocator.cpp b/lib/system/allocator.cpp
+index 8b0e9cd9..18c13181 100644
+--- a/lib/system/allocator.cpp
++++ b/lib/system/allocator.cpp
+@@ -3,6 +3,7 @@
+ #include "common/config.h"
+ #include "common/defines.h"
+ #include "common/errcode.h"
++#include "common/log.h"
+ #include <cassert>
+ #include <cctype>
+ #include <cstdlib>
+@@ -64,7 +65,8 @@ static inline constexpr const uint64_t k12G = UINT64_C(0x300000000);
+ } // namespace
+ 
+ uint8_t *Allocator::allocate(uint32_t PageCount) noexcept {
+-#if defined(HAVE_MMAP) && defined(__x86_64__) || defined(__aarch64__)
++#if defined(HAVE_MMAP) && defined(__x86_64__) ||                               \
++    defined(__aarch64__) && !WASMEDGE_OS_SEL4
+   auto Reserved = reinterpret_cast<uint8_t *>(
+       mmap(nullptr, k12G, PROT_NONE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0));
+@@ -95,7 +97,8 @@ uint8_t *Allocator::allocate(uint32_t PageCount) noexcept {
+   }
+   return Pointer;
+ #else
+-  auto Result = reinterpret_cast<uint8_t *>(std::malloc(kPageSize * PageCount));
++  auto Result = reinterpret_cast<uint8_t *>(
++      std::aligned_alloc(kPageSize, kPageSize * PageCount));
+   if (Result == nullptr) {
+     return nullptr;
+   }
+@@ -107,7 +110,8 @@ uint8_t *Allocator::allocate(uint32_t PageCount) noexcept {
+ uint8_t *Allocator::resize(uint8_t *Pointer, uint32_t OldPageCount,
+                            uint32_t NewPageCount) noexcept {
+   assert(NewPageCount > OldPageCount);
+-#if defined(HAVE_MMAP) && defined(__x86_64__) || defined(__aarch64__)
++#if defined(HAVE_MMAP) && defined(__x86_64__) ||                               \
++    defined(__aarch64__) && !WASMEDGE_OS_SEL4
+   if (mmap(Pointer + OldPageCount * kPageSize,
+            (NewPageCount - OldPageCount) * kPageSize, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == MAP_FAILED) {
+@@ -135,7 +139,8 @@ uint8_t *Allocator::resize(uint8_t *Pointer, uint32_t OldPageCount,
+ }
+ 
+ void Allocator::release(uint8_t *Pointer, uint32_t) noexcept {
+-#if defined(HAVE_MMAP) && defined(__x86_64__) || defined(__aarch64__)
++#if defined(HAVE_MMAP) && defined(__x86_64__) ||                               \
++    defined(__aarch64__) && !WASMEDGE_OS_SEL4
+   if (Pointer == nullptr) {
+     return;
+   }
+@@ -148,7 +153,7 @@ void Allocator::release(uint8_t *Pointer, uint32_t) noexcept {
+ }
+ 
+ uint8_t *Allocator::allocate_chunk(uint64_t Size) noexcept {
+-#if defined(HAVE_MMAP)
++#if defined(HAVE_MMAP) && !WASMEDGE_OS_SEL4
+   if (auto Pointer = mmap(nullptr, Size, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+       unlikely(Pointer == MAP_FAILED)) {
+@@ -166,12 +171,12 @@ uint8_t *Allocator::allocate_chunk(uint64_t Size) noexcept {
+     return Pointer;
+   }
+ #else
+-  return std::malloc(Size);
++  return static_cast<uint8_t *>(std::malloc(Size));
+ #endif
+ }
+ 
+ void Allocator::release_chunk(uint8_t *Pointer, uint64_t Size) noexcept {
+-#if defined(HAVE_MMAP)
++#if defined(HAVE_MMAP) && !WASMEDGE_OS_SEL4
+   munmap(Pointer, Size);
+ #elif WASMEDGE_OS_WINDOWS
+   boost::winapi::VirtualFree(Pointer, 0, boost::winapi::MEM_RELEASE_);
+@@ -181,7 +186,7 @@ void Allocator::release_chunk(uint8_t *Pointer, uint64_t Size) noexcept {
+ }
+ 
+ bool Allocator::set_chunk_executable(uint8_t *Pointer, uint64_t Size) noexcept {
+-#if defined(HAVE_MMAP)
++#if defined(HAVE_MMAP) && !WASMEDGE_OS_SEL4
+   return mprotect(Pointer, Size, PROT_EXEC | PROT_READ) == 0;
+ #elif WASMEDGE_OS_WINDOWS
+   return boost::winapi::VirtualProtect(
+@@ -192,7 +197,7 @@ bool Allocator::set_chunk_executable(uint8_t *Pointer, uint64_t Size) noexcept {
+ }
+ 
+ bool Allocator::set_chunk_readable(uint8_t *Pointer, uint64_t Size) noexcept {
+-#if defined(HAVE_MMAP)
++#if defined(HAVE_MMAP) && !WASMEDGE_OS_SEL4
+   return mprotect(Pointer, Size, PROT_READ) == 0;
+ #elif WASMEDGE_OS_WINDOWS
+   return boost::winapi::VirtualProtect(
+@@ -204,7 +209,7 @@ bool Allocator::set_chunk_readable(uint8_t *Pointer, uint64_t Size) noexcept {
+ 
+ bool Allocator::set_chunk_readable_writable(uint8_t *Pointer,
+                                             uint64_t Size) noexcept {
+-#if defined(HAVE_MMAP)
++#if defined(HAVE_MMAP) && !WASMEDGE_OS_SEL4
+   return mprotect(Pointer, Size, PROT_READ | PROT_WRITE) == 0;
+ #elif WASMEDGE_OS_WINDOWS
+   return boost::winapi::VirtualProtect(
+diff --git a/test/aot/AOTcoreTest.cpp b/test/aot/AOTcoreTest.cpp
+index 4d0844e6..03123c49 100644
+--- a/test/aot/AOTcoreTest.cpp
++++ b/test/aot/AOTcoreTest.cpp
+@@ -17,6 +17,8 @@
+ #include "common/filesystem.h"
+ #include "common/log.h"
+ 
++#if !WASMEDGE_OS_SEL4
++
+ #include "aot/compiler.h"
+ #include "validator/validator.h"
+ #include "vm/vm.h"
+@@ -265,6 +267,8 @@ INSTANTIATE_TEST_SUITE_P(TestUnit, CustomWasmCoreTest,
+                          testing::ValuesIn(T.enumerate()));
+ } // namespace
+ 
++#endif // !WASMEDGE_OS_SEL4
++
+ GTEST_API_ int main(int argc, char **argv) {
+   WasmEdge::Log::setErrorLoggingLevel();
+   testing::InitGoogleTest(&argc, argv);
+diff --git a/test/host/wasi/wasi.cpp b/test/host/wasi/wasi.cpp
+index eba7a490..aef254f0 100644
+--- a/test/host/wasi/wasi.cpp
++++ b/test/host/wasi/wasi.cpp
+@@ -2,7 +2,7 @@
+ #include "common/defines.h"
+ #include "gtest/gtest.h"
+ 
+-#if WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
++#if WASMEDGE_OS_SEL4 || WASMEDGE_OS_LINUX || WASMEDGE_OS_MACOS
+ 
+ #include "host/wasi/wasibase.h"
+ #include "host/wasi/wasifunc.h"

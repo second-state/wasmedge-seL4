@@ -1,0 +1,13 @@
+diff --git a/libsel4vm/src/arch/arm/vgic/vgic.h b/libsel4vm/src/arch/arm/vgic/vgic.h
+index 881274c..2358189 100644
+--- a/libsel4vm/src/arch/arm/vgic/vgic.h
++++ b/libsel4vm/src/arch/arm/vgic/vgic.h
+@@ -12,7 +12,7 @@ struct vgic_dist_device {
+     void *priv;
+ };
+ 
+-const struct vgic_dist_device dev_vgic_dist;
++extern const struct vgic_dist_device dev_vgic_dist;
+ 
+ int vm_install_vgic(vm_t *vm);
+ int vm_vgic_maintenance_handler(vm_vcpu_t *vcpu);

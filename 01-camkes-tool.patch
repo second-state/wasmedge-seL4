@@ -1,0 +1,66 @@
+diff --git a/camkes.cmake b/camkes.cmake
+index cbfb1fa..318704c 100644
+--- a/camkes.cmake
++++ b/camkes.cmake
+@@ -10,7 +10,7 @@ include(${KERNEL_HELPERS_PATH})
+ include(${PLATSUPPORT_HELPERS})
+ include(dts)
+ 
+-function(append_flags parent_list)
++function(camkes_append_flags parent_list)
+     math(EXPR limit "${ARGC} - 1")
+     set(local_flags "${${parent_list}}")
+     foreach(i RANGE 1 ${limit})
+@@ -36,7 +36,7 @@ function(append_flags parent_list)
+         endif()
+     endforeach()
+     set(${parent_list} "${local_flags}" PARENT_SCOPE)
+-endfunction(append_flags)
++endfunction(camkes_append_flags)
+ 
+ macro(set_config_guard)
+     set(${ARGV})
+@@ -57,7 +57,7 @@ function(set_camkes_flags_from_config list)
+     )
+ 
+     set(local_flags "${${list}}")
+-    append_flags(local_flags "CAmkESVerbose;--debug")
++    camkes_append_flags(local_flags "CAmkESVerbose;--debug")
+     set(${list} "${local_flags}" PARENT_SCOPE)
+ endfunction(set_camkes_flags_from_config)
+ 
+@@ -88,7 +88,7 @@ function(set_camkes_parser_flags_from_config list)
+         parsing specification"
+     )
+     set(local_flags "${${list}}")
+-    append_flags(
++    camkes_append_flags(
+         local_flags "CAmkESAllowForwardReferences;--allow-forward-references"
+         "CAmkESCPP;--cpp;--nocpp"
+     )
+@@ -222,7 +222,7 @@ function(set_camkes_render_flags_from_config list)
+             --default-stack-size
+             ${CAmkESDefaultStackSize}
+     )
+-    append_flags(
++    camkes_append_flags(
+         local_flags
+         "KernelIsMCS;--realtime"
+         "CAmkESRPCLockElision;--frpc-lock-elision;--fno-rpc-lock-elision"
+diff --git a/libsel4camkes/src/sys_clock.c b/libsel4camkes/src/sys_clock.c
+index 812cfbb..5b61d48 100644
+--- a/libsel4camkes/src/sys_clock.c
++++ b/libsel4camkes/src/sys_clock.c
+@@ -23,8 +23,11 @@ long camkes_sys_clock_gettime(va_list ap)
+         curtime = clk_get_time();
+         ts->tv_sec = curtime / MS_IN_S;
+         ts->tv_nsec = curtime % MS_IN_S * NS_IN_MS;
++    } else if (clk == CLOCK_REALTIME && ts) {
++        ts->tv_sec = 0;
++        ts->tv_nsec = 0;
+     } else {
+-        assert(!"sys_clock_gettime not implemented");
++        // assert(!"sys_clock_gettime not implemented");
+         return -ENOSYS;
+     }
+ 

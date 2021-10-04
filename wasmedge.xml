@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remote name="llvm" fetch="https://github.com/llvm"/>
+  <project name="llvm-project.git" path="projects/llvm" remote="llvm" revision="fa0971b87fb2c9d14d1bba2551e61f02f18f329b" upstream="release/12.x" dest-branch="release/12.x"/>
+  <remote name="wasmedge" fetch="https://github.com/WasmEdge"/>
+  <project name="WasmEdge.git" path="projects/wasmedge" remote="wasmedge" revision="de302010588943679e5154acab3786135744a9eb" upstream="master" dest-branch="master"/>
+</manifest>
