@@ -7,7 +7,13 @@ In this project, we integrate WasmEdge with seL4, there are two parts:
 
 ## Getting Started
 
-### Download and build wasmedge-seL4 with all-in-one script
+### System requirements
+
+Please use Ubuntu Linux 20.04 and ensure that the machine has:
+- at least 4Gb of RAM
+- at least 20Gb of disk storage (the wasmedge_sel4 directory will contain over 11 Gb of data after the following installation completes) 
+
+### Automatic installation: all-in-one script
 
 Use our all-in-one build script:
 
@@ -17,7 +23,44 @@ wget -qO- https://raw.githubusercontent.com/second-state/wasmedge-seL4/main/buil
 
 And this will clone and build our wasmedge on seL4 to an image.
 
-After finishing the build script, you will have a folder `sel4_wasmedge`.
+After finishing the build script, you will have a folder `sel4_wasmedge`. 
+
+If this automatic installation completed successfully, skip over the manual installation information and proceed to [boot wasmedge-sel4](https://github.com/second-state/wasmedge-seL4#boot-wasmedge-sel4)
+
+### Manual installation: managing memory usage
+
+The above all-in-one script will work in most cases. However, if your system resources were stressed and you encountered an error such as `ninja: build stopped: subcommand failed` please note that you can decrease the parallelization of the install by explicitly passing in a `-j` parameter to the `ninja` command (on the last line of the `build.sh` file). You see, Ninja runs the most amount of parallel processes by default and so the following proceedure is a way to explicitly set/reduce parallelization.
+
+Manually fetch the `wasmedge-sel4 repository.
+
+```bash
+cd ~
+git clone https://github.com/second-state/wasmedge-seL4.git
+cd wasmedge-seL4
+```
+
+Manually edit the `build.sh` file.
+
+```bash
+vi bash.sh
+```
+
+Add the following `-j` parameter to the last line of the file i.e.
+```bash
+ninja -j 2
+```
+
+Make the `build.sh` file executable.
+```bash
+sudo chown a+x build.sh
+```
+
+Run the edited `build.sh file.
+```bash
+./build.sh
+```
+
+Once this manual installation is complete, follow along with the following steps; boot wasmedge-sel4
 
 ### Boot wasmedge-seL4
 
