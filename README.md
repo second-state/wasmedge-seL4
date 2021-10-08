@@ -1,9 +1,13 @@
 # WasmEdge on seL4
 
-In this project, we integrate WasmEdge with seL4, there are two parts:
+[See a video demo of the entire process](https://youtu.be/2Qu-Trtkspk)
+
+In this project, we demonstrate how to run WasmEdge on the seL4 RTOS, there are two parts:
 
 1. Guest Linux OS on seL4: This is the controller of WasmEdge runtime, which will send wasm program to WasmEdge runner that is a agent on seL4 to execute.
 2. WasmEdge runner on seL4: This is the wasm program runtime, which will execute the given wasm program from Guest Linux OS.
+
+This demo is based on the seL4 simulator on Linux.
 
 ## Getting Started
 
