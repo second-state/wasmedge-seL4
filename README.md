@@ -42,7 +42,7 @@ cd wasmedge-seL4
 Manually edit the `build.sh` file.
 
 ```bash
-vi bash.sh
+vi build.sh
 ```
 
 Add the following `-j` parameter to the last line of the file i.e.
