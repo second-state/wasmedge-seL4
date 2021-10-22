@@ -29,7 +29,12 @@ jobs:
       run: |
         wget -qO- https://raw.githubusercontent.com/second-state/wasmedge-seL4/main/build.sh | bash
         
-    - name: Simulate
-      run: |
-        cd sel4_wasmedge/build
-        ./simulate
+    - uses: actions/upload-artifact@v2
+      with:
+        name: simulate
+        path: sel4_wasmedge/build/simulate
+        
+    #- name: Simulate
+    #  run: |
+    #    cd sel4_wasmedge/build
+    #    ./simulate
