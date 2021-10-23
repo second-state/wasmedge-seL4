@@ -7,6 +7,10 @@ In this project, we demonstrate how to run WasmEdge on the seL4 RTOS, there are 
 1. Guest Linux OS on seL4: This is the controller of WasmEdge runtime, which will send wasm program to WasmEdge runner that is a agent on seL4 to execute.
 2. WasmEdge runner on seL4: This is the wasm program runtime, which will execute the given wasm program from Guest Linux OS.
 
+The figure below illustrates the architecture of the system.
+
+![](docs/wasmedge-sel4.png)
+
 This demo is based on the seL4 simulator on Linux.
 
 ## Getting Started
