@@ -1,6 +1,6 @@
 # WasmEdge on seL4
 
-[Video demo](https://youtu.be/2Qu-Trtkspk) | [Build logs](https://github.com/second-state/wasmedge-seL4/runs/3977120945?check_suite_focus=true)
+[Video demo](https://youtu.be/2Qu-Trtkspk) | [Build logs](https://github.com/second-state/wasmedge-seL4/runs/3982081148?check_suite_focus=true)
 
 In this project, we demonstrate how to run WasmEdge on the seL4 RTOS, there are two parts:
 
@@ -18,6 +18,8 @@ Hardware:
 - at least 20Gb of disk storage (the wasmedge_sel4 directory will contain over 11 Gb of data after the following installation completes) 
 
 Software: Ubuntu 20.04 with dev tools packages (ep. Python) installed. We recommend the [GitHub Actions Ubuntu 20.04 docker image](https://github.com/actions/virtual-environments/blob/main/images/linux/Ubuntu2004-README.md). See a list of [installed apt packages](https://github.com/actions/virtual-environments/blob/main/images/linux/Ubuntu2004-README.md#installed-apt-packages).
+
+> If you do not want to build the seL4 system simulator yourself, you can download the [build artifact](https://github.com/second-state/wasmedge-seL4/actions/runs/1374510169) from our GitHUb Actions, and skip directly to [Boot wasmedge-seL4](#boot-wasmedge-sel4)
 
 ### Automatic installation: all-in-one script
 
