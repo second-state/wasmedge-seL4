@@ -58,7 +58,7 @@ ninja -j 2
 
 Make the `build.sh` file executable.
 ```bash
-sudo chown a+x build.sh
+sudo chmod a+x build.sh
 ```
 
 Run the edited `build.sh file.
