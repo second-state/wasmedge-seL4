@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..4fe1e97
 --- /dev/null
 +++ b/apps/Arm/wasmedge/CMakeLists.txt
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,209 @@
 +# SPDX-License-Identifier: Apache-2.0
 +
 +cmake_minimum_required(VERSION 3.9.4)
@@ -151,11 +151,23 @@ index 0000000..4fe1e97
 +    "usr/bin"
 +    overlay
 +)
++AddFileToOverlayDir(
++    "nbody-c.aot.wasm"
++    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/nbody-c.aot.wasm
++    "usr/bin"
++    overlay
++)
 +
 +# Add hello wasm file to test wasmedge
 +AddFileToOverlayDir(
 +    "hello.wasm"
 +    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/hello.wasm
++    "usr/bin"
++    overlay
++)
++AddFileToOverlayDir(
++    "hello.aot.wasm"
++    ${CMAKE_CURRENT_SOURCE_DIR}/overlay_files/hello.aot.wasm
 +    "usr/bin"
 +    overlay
 +)
@@ -538,7 +550,7 @@ new file mode 100644
 index 0000000..f491132
 --- /dev/null
 +++ b/apps/Arm/wasmedge/wasmedge.camkes
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,66 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +
 +#include <configurations/vm.h>
@@ -602,5 +614,6 @@ index 0000000..f491132
 +        vm0.crossvm_dp_1_size = 4096;
 +
 +        wasmedge.heap_size = 0x4000000;
++        wasmedge._stack_size = 32768;
 +    }
 +}
