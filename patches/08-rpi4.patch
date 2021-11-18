@@ -1,0 +1,149 @@
+diff -Naur origin/wasmedge/CMakeLists.txt rpi4/wasmedge/CMakeLists.txt
+--- origin/wasmedge/CMakeLists.txt	2021-11-18 19:09:50.463653761 +0800
++++ rpi4/wasmedge/CMakeLists.txt	2021-11-18 19:09:41.431791274 +0800
+@@ -40,6 +40,12 @@
+     if(SIMULATION)
+         GenerateSimulateScript()
+     endif()
++elseif("${KernelARMPlatform}" STREQUAL "rpi4")
++    set(cpp_flags "-DKERNELARMPLATFORM_BCM2711")
++    set(linux_repo "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git")
++    set(linux_tag "5.12.0-rc6+")
++    set(linux_arch "arm64")
++    set(linux_cross_compile "aarch64-linux-gnu-")
+ endif()
+ 
+ AddToFileServer("linux" "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/linux")
+diff -Naur origin/wasmedge/rpi4/devices.camkes rpi4/wasmedge/rpi4/devices.camkes
+--- origin/wasmedge/rpi4/devices.camkes	1970-01-01 08:00:00.000000000 +0800
++++ rpi4/wasmedge/rpi4/devices.camkes	2021-11-18 19:09:41.431791274 +0800
+@@ -0,0 +1,76 @@
++#include <configurations/vm.h>
++
++#define VM_RAM_OFFSET 0
++#define VM_INITRD_MAX_SIZE 0x2000000 //32 MB
++
++#define VM0_RAM_BASE 0x40000000
++#define VM0_RAM_SIZE 0x08000000
++#define VM0_DTB_ADDR 0x47000000 //VM0_RAM_BASE + 0x7000000
++#define VM0_INITRD_ADDR 0x45000000 //VM0_DTB_ADDR - VM_INITRD_MAX_SIZE
++
++#define VM1_RAM_BASE 0x48000000
++#define VM1_RAM_SIZE 0x08000000
++#define VM1_DTB_ADDR 0x4F000000 //VM1_RAM_BASE + 0x7000000
++#define VM1_INITRD_ADDR 0x4D000000 //VM1_DTB_ADDR - VM_INITRD_MAX_SIZE
++
++#define VM2_RAM_BASE 0x50000000
++#define VM2_RAM_SIZE 0x08000000
++#define VM2_DTB_ADDR 0x57000000 //VM2_RAM_BASE + 0x7000000
++#define VM2_INITRD_ADDR 0x55000000 //VM2_DTB_ADDR - VM_INITRD_MAX_SIZE
++
++assembly {
++	composition {}
++	configuration {
++
++        vm0.linux_address_config = {
++            "linux_ram_base" : VAR_STRINGIZE(VM0_RAM_BASE),
++            "linux_ram_paddr_base" : VAR_STRINGIZE(VM0_RAM_BASE),
++            "linux_ram_size" : VAR_STRINGIZE(VM0_RAM_SIZE),
++            "linux_ram_offset" : VAR_STRINGIZE(VM_RAM_OFFSET),
++            "dtb_addr" : VAR_STRINGIZE(VM0_DTB_ADDR),
++            "initrd_max_size" : VAR_STRINGIZE(VM_INITRD_MAX_SIZE),
++            "initrd_addr" : VAR_STRINGIZE(VM0_INITRD_ADDR),
++        };
++        vm0.num_vcpus = 4;
++        vm0.linux_image_config = {
++            "linux_bootcmdline" : "console=hvc0 root=/dev/ram0 ramdisk_size=131072 rw debug loglevel=8 pci=nomsi,realloc=off,bios initcall_blacklist=clk_disable_unused",
++            "linux_stdout" : "hvc0",
++            "dtb_name" : "",
++            "initrd_name" : "linux-initrd-vm0",
++        };
++	vm0.mmios = [
++	     "0xff846000:0x1000:12"
++        ];
++        vm0.untyped_mmios = [
++            "0x40000000:27"  //RAM
++        ];
++        vm0.irqs =  [];
++        vm0.dtb = dtb([
++            { "path": "/scb/ethernet@7d580000" }
++        ]);
++
++        vm1.linux_address_config = {
++            "linux_ram_base" : VAR_STRINGIZE(VM1_RAM_BASE),
++            "linux_ram_paddr_base" : VAR_STRINGIZE(VM1_RAM_BASE),
++            "linux_ram_size" : VAR_STRINGIZE(VM1_RAM_SIZE),
++            "linux_ram_offset" : VAR_STRINGIZE(VM_RAM_OFFSET),
++            "dtb_addr" : VAR_STRINGIZE(VM1_DTB_ADDR),
++            "initrd_max_size" : VAR_STRINGIZE(VM_INITRD_MAX_SIZE),
++            "initrd_addr" : VAR_STRINGIZE(VM1_INITRD_ADDR),
++        };
++        vm1.linux_image_config = {
++            "linux_bootcmdline" : "console=hvc0 ramdisk_size=131072 root=/dev/ram0 rw debug loglevel=8 pci=nomsi initcall_blacklist=clk_disable_unused",
++            "linux_stdout" : "hvc0",
++            "dtb_name" : "",
++            "initrd_name" : "linux-initrd-vm-client",
++        };
++	vm1.mmios = [
++	    "0xff846000:0x1000:12"
++        ];
++        vm1.untyped_mmios = [
++            "0x48000000:27"  //RAM
++        ];
++        vm1.irqs =  [];
++        vm1.dtb = dtb([{}]);
++    }
++}
+diff -Naur origin/wasmedge/settings.cmake rpi4/wasmedge/settings.cmake
+--- origin/wasmedge/settings.cmake	2021-11-18 19:09:50.463653761 +0800
++++ rpi4/wasmedge/settings.cmake	2021-11-18 19:09:41.431791274 +0800
+@@ -10,7 +10,7 @@
+ # @TAG(DATA61_BSD)
+ #
+ 
+-set(supported "qemu-arm-virt")
++set(supported "qemu-arm-virt;rpi4")
+ if(NOT "${PLATFORM}" IN_LIST supported)
+     message(FATAL_ERROR "PLATFORM: ${PLATFORM} not supported.
+          Supported: ${supported}")
+@@ -18,6 +18,7 @@
+ set(VmPCISupport ON CACHE BOOL "" FORCE)
+ set(LibUSB OFF CACHE BOOL "" FORCE)
+ set(VmInitRdFile ON CACHE BOOL "" FORCE)
++set(VmVirtioConsole ON CACHE BOOL "" FORCE)
+ if(${PLATFORM} STREQUAL "qemu-arm-virt")
+     # force cpu
+     set(QEMU_MEMORY "2048")
+diff -Naur origin/wasmedge/src/cross_vm_connections.c rpi4/wasmedge/src/cross_vm_connections.c
+--- origin/wasmedge/src/cross_vm_connections.c	2021-11-18 19:09:50.463653761 +0800
++++ rpi4/wasmedge/src/cross_vm_connections.c	2021-11-18 19:09:41.431791274 +0800
+@@ -20,6 +20,8 @@
+ 
+ #ifdef CONFIG_PLAT_QEMU_ARM_VIRT
+ #define CONNECTION_BASE_ADDRESS 0xDF000000
++#elif CONFIG_PLAT_BCM2711
++#define CONNECTION_BASE_ADDRESS 0x02000000
+ #else
+ #define CONNECTION_BASE_ADDRESS 0x3F000000
+ #endif
+diff -Naur origin/wasmedge/wasmedge.camkes rpi4/wasmedge/wasmedge.camkes
+--- origin/wasmedge/wasmedge.camkes	2021-11-18 20:42:20.810353194 +0800
++++ rpi4/wasmedge/wasmedge.camkes	2021-11-18 19:09:41.431791274 +0800
+@@ -34,6 +34,9 @@
+     composition {
+         VM_GENERAL_COMPOSITION_DEF()
+         VM_COMPOSITION_DEF(0)
++        /* Add SerialServer functionality for VirtConsole */
++        VM_VIRTUAL_SERIAL_COMPOSITION_DEF(0)
++
+         component WasmEdge wasmedge;
+ 
+         connection seL4Notification event_conn_0(from vm0.ready,
+@@ -49,6 +52,7 @@
+     configuration {
+         VM_GENERAL_CONFIGURATION_DEF()
+         VM_CONFIGURATION_DEF(0)
++        VM_VIRTUAL_SERIAL_CONFIGURATION_DEF(0)
+ 
+         vm0.num_extra_frame_caps = 0;
+         vm0.extra_frame_map_address = 0;

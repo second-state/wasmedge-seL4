@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+     Copyright 2021, Data61, CSIRO (ABN 41 687 119 230)
+
+     SPDX-License-Identifier: BSD-2-Clause
+-->
+<manifest>
+
+  <!-- External repositiories -->
+  <remote name="lwip" fetch="https://git.savannah.gnu.org/git/"/>
+  <remote name="picotcp" fetch="https://github.com/tass-belgium"/>
+  <remote name="polly" fetch="https://github.com/ruslo"/>
+  <remote name="zeromq" fetch="https://github.com/zeromq"/>
+  <remote name="llvm" fetch="https://github.com/llvm"/>
+  <remote name="wasmedge" fetch="https://github.com/WasmEdge"/>
+
+  <!-- Use our seL4 forks where needed -->
+  <remote name="seL4" fetch="https://github.com/tiiuae"/>
+  <remote name="seL4_vanilla" fetch="https://github.com/seL4"/>
+
+  <!-- External libraries and tools -->
+  <project remote="lwip" name="lwip.git" path="projects/lwip"  revision="159e31b689577dbf69cf0683bbaffbd71fa5ee10" upstream="refs/tags/STABLE-2_1_2_RELEASE" dest-branch="refs/tags/STABLE-2_1_2_RELEASE"/>
+  <project remote="picotcp" name="picotcp.git" path="projects/picotcp"  revision="13c00a067190f5ec62340ed932a2bb833c366d63" upstream="refs/tags/v1.7.0" dest-branch="refs/tags/v1.7.0"/>
+  <project remote="polly" name="polly" path="tools/polly" revision="65870a4118d76e2adb2fd47ed9c2a5d8bd204d1c" upstream="master" dest-branch="master"/>
+  <project remote="zeromq" name="libzmq" path="projects/libzmq" revision="d062edd8c142384792955796329baf1e5a3377cd" upstream="refs/tags/v4.2.5" dest-branch="refs/tags/v4.2.5"/>
+
+  <!-- Stuff that varies -->
+  <project remote="seL4" name="camkes-tool.git" path="projects/camkes-tool" revision="rpi4">
+    <linkfile src="docs/index.md" dest="camkes_README.md"/>
+  </project>
+  <project remote="seL4" name="capdl.git" path="projects/capdl" revision="rpi4"/>
+  <project remote="seL4" name="projects_libs.git" path="projects/projects_libs" revision="master"/>
+  <project remote="seL4" name="sel4runtime" path="projects/sel4runtime" revision="master"/>
+  <project remote="seL4" name="musllibc.git" path="projects/musllibc" revision="sel4"/>
+  <project remote="seL4" name="global-components.git" path="projects/global-components" revision="rpi4"/>
+  <project remote="seL4" name="seL4.git" path="kernel" revision="rpi4"/>
+  <project remote="seL4" name="seL4_libs.git" path="projects/seL4_libs" revision="rpi4"/>
+  <project remote="seL4" name="seL4_tools.git" path="tools/seL4" revision="rpi4">
+    <linkfile src="cmake-tool/griddle" dest="griddle"/>
+    <linkfile src="cmake-tool/init-build.sh" dest="init-build.sh"/>
+  </project>
+  <project remote="seL4" name="util_libs.git" path="projects/util_libs" revision="rpi4"/>
+  <project remote="seL4" name="camkes-vm-examples.git" path="projects/vm-examples" revision="rpi4">
+    <linkfile src="easy-settings.cmake" dest="easy-settings.cmake"/>
+  </project>
+  <project remote="seL4" name="camkes-vm-linux.git" path="projects/vm-linux" revision="rpi4"/>
+  <project remote="seL4" name="camkes-vm.git" path="projects/vm" revision="rpi4">
+    <linkfile src="README.md" dest="README.md"/>
+  </project>
+  <project remote="seL4" name="camkes-vm-images.git" path="projects/camkes-vm-images" revision="rpi4"/>
+  <project remote="seL4" name="seL4_projects_libs.git" path="projects/seL4_projects_libs" revision="rpi4"/>
+  <project name="llvm-project.git" path="projects/llvm" remote="llvm" revision="fa0971b87fb2c9d14d1bba2551e61f02f18f329b" upstream="release/12.x" dest-branch="release/12.x"/>
+  <project name="WasmEdge.git" path="projects/wasmedge" remote="wasmedge" revision="de302010588943679e5154acab3786135744a9eb" upstream="master" dest-branch="master"/>
+
+</manifest>
