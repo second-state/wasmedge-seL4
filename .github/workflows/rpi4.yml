@@ -1,0 +1,60 @@
+name: rpi4
+
+on:
+  push:
+    branches:
+      - 'dm4/rpi4'
+
+jobs:
+  build_vm:
+    name: Build vm_cross_connector
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt update && sudo apt upgrade && sudo apt install -y \
+            cmake ccache ninja-build cmake-curses-gui \
+            python3-dev python3-pip \
+            libxml2-utils ncurses-dev \
+            curl git doxygen device-tree-compiler \
+            u-boot-tools \
+            protobuf-compiler python-protobuf \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            qemu-system-aarch64 libc6-dev-arm64-cross \
+            haskell-stack cpio wget zip gzip xterm
+          pip3 install --user setuptools sel4-deps camkes-deps
+      - name: Configure repo
+        run: |
+          git clone https://gerrit.googlesource.com/git-repo ~/repo
+          git config --global user.email test@secondstate.io
+          git config --global user.name test
+          git config --global color.ui false
+      - name: Get source
+        run: |
+          git clone https://github.com/second-state/wasmedge-seL4.git -b dm4/rpi4
+          mkdir wasmedge-rpi4
+          cd wasmedge-rpi4
+          ~/repo/repo init -u https://github.com/second-state/wasmedge-seL4.git -b dm4/rpi4 -m rpi4.xml
+          ~/repo/repo sync
+      - name: Patch files
+        run: |
+          cd wasmedge-rpi4
+          patch -p1 -d projects/camkes-tool < ../wasmedge-seL4/patches/01-camkes-tool.patch
+          patch -p1 -d projects/llvm < ../wasmedge-seL4/patches/02-llvm.patch
+          patch -p1 -d projects/seL4_libs < ../wasmedge-seL4/patches/03-seL4_libs.patch
+          patch -p1 -d projects/vm-examples < ../wasmedge-seL4/patches/05-vm-examples.patch
+          patch -p1 -d projects/vm-linux < ../wasmedge-seL4/patches/06-vm-linux.patch
+          patch -p1 -d projects/wasmedge < ../wasmedge-seL4/patches/07-wasmedge.patch
+          patch -p1 -d projects/vm-examples/apps/Arm < ../wasmedge-seL4/patches/08-rpi4.patch
+          cp ../wasmedge-seL4/wasm-examples/*.wasm projects/vm-examples/apps/Arm/wasmedge/overlay_files/
+      - name: Build vm_cross_connector
+        env:
+          TERM: xterm
+        run: |
+          dpkg -l
+          cd wasmedge-rpi4
+          mkdir build-vm
+          cd build-vm
+          ../init-build.sh -DCAMKES_VM_APP=vm_cross_connector -DPLATFORM=rpi4
+          ninja
+
