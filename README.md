@@ -166,6 +166,18 @@ Expected output:
 [1900-01-00 00:00:00.000] [info] execution success, exit code:0
 ```
 
+You can also deploy AOT compiled wasm files to seL4. The AOT compiler requires WasmEdge 0.9.0-rc.5 and above.
+
+```bash
+wasmedgec nbody-c.wasm nbody-c.aot.wasm
+```
+
+We already have the `nbody-c.aot.wasm` packaged in the guest OS. So, you can just deploy and run it.
+
+```bash
+wasmedge_emit /usr/bin/nbody-c.aot.wasm 10
+```
+
 #### Example B: hello.wasm
 
 Run an easy application to print `hello, sel4` and a simple calculation.
@@ -181,4 +193,16 @@ Expected output:
 hello, sel4
 1+2-3*4 = -9
 [1900-01-00 00:00:00.000] [info] execution success, exit code:0
+```
+
+You can also deploy AOT compiled wasm files to seL4. The AOT compiler requires WasmEdge 0.9.0-rc.5 and above.
+
+```bash
+wasmedgec hello.wasm hello.aot.wasm
+```
+
+We already have the `hello.aot.wasm` packaged in the guest OS. So, you can just deploy and run it.
+
+```bash
+wasmedge_emit /usr/bin/hello.aot.wasm
 ```
