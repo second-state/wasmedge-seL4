@@ -8,12 +8,21 @@ diff -Naur origin/wasmedge/CMakeLists.txt rpi4/wasmedge/CMakeLists.txt
 +elseif("${KernelARMPlatform}" STREQUAL "rpi4")
 +    set(cpp_flags "-DKERNELARMPLATFORM_BCM2711")
 +    set(linux_repo "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git")
-+    set(linux_tag "5.12.0-rc6+")
++    set(linux_tag "v5.12.1")
 +    set(linux_arch "arm64")
 +    set(linux_cross_compile "aarch64-linux-gnu-")
  endif()
  
  AddToFileServer("linux" "${CAMKES_VM_IMAGES_DIR}/${KernelARMPlatform}/linux")
+@@ -197,7 +203,7 @@
+ DeclareCAmkESComponent(VM SOURCES src/cross_vm_connections.c)
+
+ # Define our WasmEdge Component
+-DeclareCAmkESComponent(WasmEdge SOURCES src/wasmedge.cpp INCLUDES ${CMAKE_BINARY_DIR}/include/c++/v1 LIBS wasmedgeVM C_FLAGS -O3 -g -std=gnu++17)
++DeclareCAmkESComponent(WasmEdge SOURCES src/wasmedge.cpp INCLUDES ${CMAKE_BINARY_DIR}/include/c++/v1 LIBS wasmedgeVM CXX_FLAGS -O3 -g -std=gnu++17)
+
+ # Declare root server
+ DeclareCAmkESRootserver(
 diff -Naur origin/wasmedge/rpi4/devices.camkes rpi4/wasmedge/rpi4/devices.camkes
 --- origin/wasmedge/rpi4/devices.camkes	1970-01-01 08:00:00.000000000 +0800
 +++ rpi4/wasmedge/rpi4/devices.camkes	2021-11-18 19:09:41.431791274 +0800
