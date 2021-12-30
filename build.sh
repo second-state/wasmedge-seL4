@@ -10,7 +10,7 @@
 set -xuo pipefail
 # Install dependency
 # See https://docs.sel4.systems/projects/buildsystem/host-dependencies.html
-sudo apt update && apt install \
+sudo apt update && sudo apt install -y \
  cmake ccache ninja-build cmake-curses-gui \
  python3-dev python3-pip \
  libxml2-utils ncurses-dev \
