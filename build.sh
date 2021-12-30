@@ -10,7 +10,7 @@
 set -xuo pipefail
 # Install dependency
 # See https://docs.sel4.systems/projects/buildsystem/host-dependencies.html
-sudo apt install \
+sudo apt update && apt install \
  cmake ccache ninja-build cmake-curses-gui \
  python3-dev python3-pip \
  libxml2-utils ncurses-dev \
@@ -19,7 +19,7 @@ sudo apt install \
  protobuf-compiler python-protobuf \
  gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
  qemu-system-aarch64 libc6-dev-arm64-cross \
- haskell-stack
+ haskell-stack bc cpio
 
 pip3 install --user setuptools sel4-deps camkes-deps
 
