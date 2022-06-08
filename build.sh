@@ -21,15 +21,15 @@ sudo apt update && sudo apt install -y \
  qemu-system-aarch64 libc6-dev-arm64-cross \
  haskell-stack bc cpio
 
-pip3 install --user setuptools sel4-deps camkes-deps
+pip3 install --user setuptools sel4-deps camkes-deps simpleeval
 
 # Create root directory
 mkdir -pv sel4_wasmedge
 cd sel4_wasmedge
 
 # Setup project files
-git clone https://gerrit.googlesource.com/git-repo .repo/repo
-.repo/repo/repo init -u https://github.com/second-state/wasmedge-seL4.git
+git clone --branch v1.13.11 https://gerrit.googlesource.com/git-repo .repo/repo
+.repo/repo/repo init -b main -u https://github.com/second-state/wasmedge-seL4.git
 
 # Update and checkout files
 .repo/repo/repo sync
