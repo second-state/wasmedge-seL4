@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <remote name="second-state" fetch="https://github.com/second-state/"/>
+  <default remote="second-state" revision="main"/>
+  <project name="wasmedge-seL4-projects.git" path="." remote="second-state" revision="refs/tags/0.0.1" upstream="main" dest-branch="main"/>
+</manifest>
