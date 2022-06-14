@@ -80,6 +80,27 @@ Run the edited `build.sh file.
 
 Once this manual installation is complete, follow along with the following steps; boot wasmedge-sel4
 
+### Use our pre-built binary
+
+If you want to do a quick test on wasmedge-seL4, you could try our pre-built binary:
+
+```bash
+mkdir build
+cd build
+wget https://github.com/second-state/wasmedge-seL4/releases/download/0.0.1/wasmedge-seL4-0.0.1-build.tar.gz
+tar zxvf wasmedge-seL4-0.0.1-build.tar.gz
+```
+
+You'll get the following pre-built files:
+
+```
+build/
+|-- images/
+|   `-- capdl-loader-image-arm-qemu-arm-virt
+|-- simulate
+`-- wasmedge-seL4-0.0.1-build.tar.gz
+```
+
 ### Boot wasmedge-seL4
 
 ```bash
