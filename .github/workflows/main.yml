@@ -14,35 +14,23 @@ on:
 
 jobs:
   build:
-
+    strategy:
+      matrix:
+        include:
+        - manifest: default.xml
+        - manifest: snapshot.xml
     runs-on: ubuntu-20.04
-
     steps:
-
     - name: Install apt-get packages
       run: |
         sudo ACCEPT_EULA=Y apt-get update
         sudo ACCEPT_EULA=Y apt-get upgrade
         sudo ACCEPT_EULA=Y apt-get install git wget sudo zip
-
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
-
-    - name: Build
+    - name: Build ${{ matrix.manifest }}
+      env:
+        MANIFEST: ${{ matrix.manifest }}
       run: |
         bash ./build.sh
-
-    - name: Zip
-      run: |
-        zip -r sel4_wasmedge.zip sel4_wasmedge/build
-
-    - uses: actions/upload-artifact@v2
-      with:
-        name: sel4_wasmedge
-        path: sel4_wasmedge.zip
-
-        #- name: Simulate
-        #  run: |
-        #    cd sel4_wasmedge/build
-        #    ./simulate
