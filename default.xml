@@ -9,7 +9,7 @@
   <remote name="lwip" fetch="https://git.savannah.gnu.org/git/"/>
   <remote name="picotcp" fetch="https://github.com/tass-belgium"/>
   <remote name="polly" fetch="https://github.com/ruslo"/>
-  <remote name="seL4" fetch="../seL4"/>
+  <remote name="seL4" fetch="https://github.com/seL4"/>
   <remote name="zeromq" fetch="https://github.com/zeromq"/>
   <remote name="llvm" fetch="https://github.com/llvm"/>
   <remote name="wasmedge" fetch="https://github.com/WasmEdge"/>
